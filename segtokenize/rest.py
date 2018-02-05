@@ -9,6 +9,6 @@ app = Flask(__name__)
 def revision():
     return jsonify(segtokenize.revision())
 
-@app.route("/tokenize", methods = ["PUT"])
+@app.route("/tokenize", methods = ["POST"])
 def tokenize():
     return jsonify(segtokenize.handle(request.get_json(force=True)))
