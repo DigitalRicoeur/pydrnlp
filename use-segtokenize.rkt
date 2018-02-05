@@ -23,23 +23,20 @@
   ".")
 
 (define (try-stdio)
-  (define run
-    (let ([python3 (find-executable-path "python3")])
-      (λ (arg)
-        (string->jsexpr
-         (with-output-to-string
-           (λ ()
-             (system* python3 
-                      "-m"
-                      "segtokenize.stdio"
-                      arg)))))))
   (parameterize ([current-directory this-dir])
-                 
-     
+    (define run
+      (let ([python3 (find-executable-path "python3")])
+        (λ (arg [str ""])
+          (string->jsexpr
+           (parameterize ([current-input-port (open-input-string str)])
+             (with-output-to-string
+               (λ ()
+                 (system* python3 
+                          "-m"
+                          "segtokenize.stdio"
+                          arg))))))))
     (values (run "revision")
-            (parameterize ([current-input-port (open-input-string
-                                                (jsexpr->string to-send))])
-              (run "tokenize")))))
+            (run "tokenize" (jsexpr->string to-send)))))
 
 
 (define (try-rest)
