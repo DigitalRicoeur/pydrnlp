@@ -11,9 +11,9 @@ nlp = spacy.load('en', disable=['parser','ner'])
 
 
 ##########################################################
-# revision : -> real
+# revision : -> natural
 ##########################################################
-# Returns a real number identifying the current revision 
+# Returns a natural number identifying the current revision 
 # of this module. The intended purpose is for clients to
 # be able to cache responses: as long as revision()
 # returns the same number, calling this API on the same

@@ -7,6 +7,7 @@ compiled/
 scribblings/*.html
 scribblings/*.css
 scribblings/*.js
+py/condaenv
 
 # The remainder is from
 # https://github.com/github/gitignore/blob/master/Python.gitignore
