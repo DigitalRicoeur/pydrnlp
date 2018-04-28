@@ -14,6 +14,6 @@ def revision():
 
 @app.route("/tokenize", methods = ["POST"])
 def tokenize():
-    return jsonify(segtokenize.handle(request.get_json(force=True)))
+    return jsonify(segtokenize.tokenizeDocList(request.get_json(force=True)))
 
 

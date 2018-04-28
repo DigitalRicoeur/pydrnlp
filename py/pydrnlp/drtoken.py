@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 
 from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.tokens import Token
 
+# interestingPOS : str -> bool
+def interestingPOS(str : str) -> bool:
+    """Recognizes the interesting potential values from token.pos_
 
-# interestingPOS : string -> bool
-# Recognizes the interesting potential values from token.pos_
-# Notable exclusions: "NUM"->numeral, "SYM"=>symbol
-def interestingPOS(str):
+     Notable exclusions: "NUM"->numeral, "SYM"=>symbol
+
+    "pos"/"POS" stands for "Part of speach"
+    """
     return ((str == "ADJ") or # adjective
             (str == "ADV") or # adverb
             (str == "INTJ") or # interjection
@@ -16,14 +20,23 @@ def interestingPOS(str):
             (str == "X")) # other
 
 
-# boringPOS : string -> bool
-# The opposite of interestingPOS
-def boringPOS(str):
+# boringPOS : str -> bool
+def boringPOS(str : str) -> bool:
+    """The opposite of interestingPOS
+    """
     return not interestingPOS(str)
 
 
-# tokenQuicklyFails : token -> bool
-def tokenQuicklyFails(token):
+# tokenQuicklyFails : Token -> bool
+def tokenQuicklyFails(token : Token) -> bool:
+    """Predicate recognizing tokens which obviously should NOT be counted.
+
+    Specifically, recognizes tokens which are stop words, punctuation, 
+    or space, or which have an uninteresting part of speach tag
+    according to boringPOS.
+
+    Used to implement tokenShouldUse.
+    """
     return (token.is_stop or
             token.is_punct or
             token.is_space or
@@ -31,21 +44,24 @@ def tokenQuicklyFails(token):
             boringPOS(token.pos_))
 
 
-##########################################################
-# tokenShouldUse : token -> boolean
-##########################################################
-# Rejects tokens which are stop words, punctuation, space,
-# or which have an uninteresting part of speach tag.
-# Checks for the lemma and lowercase forms of the token
-# in STOP_WORDS because token.is_stop seems to be False
-# when the token itself is not a stop word, even if
-# a more normalized form might be.
-# Maybe there is opportunity for optimization here?
-# In most cases, both token.lemma_ and token.lower_
-# are in STOP_WORDS if either of them is.
-# It seems to be very rare for only token.lower_
-# to be in STOP_WORDS. Investigate further.
-def tokenShouldUse(token):
+# tokenShouldUse : Token -> bool
+def tokenShouldUse(token : Token) -> bool:
+    """Predicate recognizing tokens which should be included in counting.
+
+    In addition to returning False for any token for which
+    tokenQuicklyFails would return True,
+    also checks for the lemma and lowercase forms of the token
+    in STOP_WORDSspacy.lang.en.stop_words. 
+    This is needed because token.is_stop seems to be False
+    when the token itself is not a stop word, even if
+    a more normalized form might be.
+
+    Maybe there is opportunity for optimization here?
+    In most cases, both token.lemma_ and token.lower_
+    are in STOP_WORDS if either of them is.
+    It seems to be very rare for only token.lower_
+    to be in STOP_WORDS. Investigate further.
+    """
     return not (tokenQuicklyFails(token) or
                 (token.lemma_ in STOP_WORDS) or
                 (token.lower_ in STOP_WORDS))

@@ -3,50 +3,75 @@
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
 from pydrnlp.drtoken import tokenShouldUse
+from pydrnlp.contract import ModuleContract, ListOf, IteratorOf, Predicate
+from spacy.tokens import Token
 
 
 # Could a custom pipeline do less work faster?
 # Also, is garbage an issue?
 nlp = spacy.load('en', disable=['parser','ner'])
 
+Contract = ModuleContract(__name__)
 
-##########################################################
+@Predicate
+def Natural(any) -> bool:
+    """Recognizes integers where ƒpyflow{any >= 0}"""
+    return ((isinstance(any,int)) and
+            (any >= 0))
+
+
 # revision : -> natural
-##########################################################
-# Returns a natural number identifying the current revision 
-# of this module. The intended purpose is for clients to
-# be able to cache responses: as long as revision()
-# returns the same number, calling this API on the same
-# input should return equivalent output.
-# When the result of revision() changes, any cache is stale.
-def revision():
+def revision() -> Natural:
+    """Returns a natural number identifying the current revision
+
+    The intended purpose is for clients to
+    be able to cache responses: 
+    As long as revision() returns the same number, 
+    calling this API on the same input should return equivalent output.
+    This enables clients to cache responses.
+
+    When the result of revision() changes, any cache is stale.
+
+    For implementors: The number returned by revision()
+    should be incremented if their is any change to the
+    behavior *either* of this library *or* of its dependencies.
+    """
     return 0
 
 
-##########################################################
-# a LemmaWithCount is a 
-#    {"lemma":string,
-#     "text":string,
-#     "count":positive-integer}
-##########################################################
+@Predicate
+def PositiveInt(any) -> bool:
+    """Recognizes integers where ƒpyflow{any > 0}"""
+    return ((isinstance(any,int)) and
+            (any > 0))
+
+# for doc
+LemmaWithCount = Contract("LemmaWithCount",
+                          {"lemma": str,
+                           "text": str,
+                           "count": PositiveInt})
+IterLemmaCount = IteratorOf(LemmaWithCount)
 
 
-##########################################################
 # tokensFilterUniqueLemma :
-#   (sequenceof token) -> (iteratorof LemmaWithCount)
-##########################################################
-# Considering only tokens in the argument sequence which
-# satisfy tokenShouldUse, counts the number of occurences
-# of each lemma.
-# The resulting iterator has one LemmaWithCount dictionary 
-# for each unique significant lemma.
-# The purpose of the "text" field is to provide an exemplar
-# of an actual use of the word, as the lemma is always
-# normalized, but some words (e.g. "DuFay") shouldn't be.
-# (Also, some lemmas are strange, like "whatev".)
-# More thought should be given to the right way to chose
-# an exemplar, which is an issue both here and in client code.
-def tokensFilterUniqueLemma(seq):
+#   IteratorOf(Token) -> IteratorOf(LemmaWithCount)
+def tokensFilterUniqueLemma(seq : IteratorOf(Token)) -> IterLemmaCount:
+    """Counts the number of occurences of each lemma.
+
+    Only tokens in the argument sequence which satisfy
+    tokenShouldUse are considered.
+
+    The resulting iterator has one LemmaWithCount dictionary 
+    for each unique significant lemma.
+
+    The purpose of the "text" field is to provide an exemplar
+    of an actual use of the word, as the lemma is always
+    normalized, but some words (e.g. "DuFay") shouldn't be.
+    (Also, some lemmas are strange, like "whatev".)
+
+    More thought should be given to the right way to chose
+    an exemplar, which is an issue both here and in client code.
+    """
     # countDict maps ints (the hash code of a lemma)
     #   to positive-ints (the count of its occurrences)
     # tkns accumulates one token object per lemma
@@ -66,57 +91,54 @@ def tokensFilterUniqueLemma(seq):
                "text":token.text ,
                "count":countDict[token.lemma]}
 
+# for doc
+TokenizedSegment = Contract("TokenizedSegment",
+                            {"counter": Natural,
+                             "tokenized": ListOf(LemmaWithCount)})
+InputSegment = Contract("InputSegment",
+                        {"counter": Natural,
+                         "body": str})
 
-##########################################################        
-# a TokenizedSegment is a
-#    {"counter":json,
-#     "tokenized":(listof LemmaWithCount)} 
-##########################################################
-
-
-##########################################################
 # tokenizeSegment :
-#   {"counter":json,"body":string} -> TokenizedSegment
-##########################################################
-# Given the JSON value representing a segment, 
-# uses the spacy Language object to process the body,
-# calls tokensFilterUniqueLemma to obtain
-# LemmaWithCount dictionaries, and wraps the results into
-# a JSON value.
-def tokenizeSegment(sgmnt):
+def tokenizeSegment(sgmnt : InputSegment) -> TokenizedSegment:
+    """Processes the JSON value representing a segment.
+
+    Uses the spacy Language object to process the body,
+    calls tokensFilterUniqueLemma to obtain LemmaWithCount dictionaries,
+    and wraps the results into a JSON value.
+    """
     doc = nlp(sgmnt["body"])
     tokenized = list(tokensFilterUniqueLemma(doc))
     return {"counter":sgmnt["counter"],
             "tokenized":tokenized}
 
 
-##########################################################
-# an InputDoc is a
-#    {"key":json,
-#     "segments":(listof {"counter":json,"body":string})}
-#
-# a TokenizedDoc is a
-#    {"key":json,
-#     "segments":(listof TokenizedSegment)}
-##########################################################
+# for doc
+InputDoc = Contract("InputDoc",
+                    {"key": str,
+                     "segments": ListOf(InputSegment)})
+TokenizedDoc = Contract("TokenizedDoc",
+                        {"key": str,
+                         "segments": ListOf(TokenizedSegment)})
 
 
-##########################################################
-# handleInputDoc : InputDoc -> TokenizedDoc
-##########################################################
-# Uses tokenizeSegment to process each segment JSON value
-# in the given document JSON value.
-def handleInputDoc(jsDocIn):
+
+# tokenizeDoc : InputDoc -> TokenizedDoc
+def tokenizeDoc(jsDocIn : InputDoc) -> TokenizedDoc:
+    """Tokenizes one document.
+
+    Uses tokenizeSegment to process each segment JSON value
+    in the given document JSON value.
+    """
     return {"key":jsDocIn["key"],
             "segments":list(map(tokenizeSegment,
                                 jsDocIn["segments"]))}
 
 
-##########################################################
-# handle : (listof InputDoc) -> (listof TokenizedDoc)
-##########################################################
-# Simply maps handleInputDoc over the list of JSON values.
-def handle(jsIn):
-    return list(map(handleInputDoc,jsIn))
+# tokenizeDocList : ListOf(InputDoc) -> ListOf(TokenizedDoc)
+def tokenizeDocList(jsIn : ListOf(InputDoc)) -> ListOf(TokenizedDoc):
+    """Simply maps tokenizeDoc over the list of JSON values.
+    """
+    return list(map(tokenizeDoc,jsIn))
 
    

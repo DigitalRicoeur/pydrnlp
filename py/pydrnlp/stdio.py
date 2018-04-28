@@ -12,8 +12,8 @@ def dumpln(jsOut):
 if __name__ == "__main__":
     if sys.argv[1] == "tokenize":
         jsIn = json.load(sys.stdin)
-        dumpln(segtokenize.handle(jsIn))
-    elif sys.argv[1] == "revision":
+        dumpln(segtokenize.tokenizeDocList(jsIn))
+    elif sys.argv[1] == "tokenizer-revision":
         dumpln(segtokenize.revision())
     else:
         jdumpln(False)
