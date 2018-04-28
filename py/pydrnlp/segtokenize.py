@@ -2,16 +2,20 @@
 
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
-from pydrnlp.drtoken import tokenShouldUse
-from pydrnlp.contract import ModuleContract, ListOf, IteratorOf, Predicate
 from spacy.tokens import Token
+from pydrnlp.drtoken import tokenShouldUse
+from pydrnlp.drtoken import tokenFilterRevision, RevisionJsexpr
+import pydrnlp.annotations as an
+from pydrnlp.annotations import Predicate, NoDoc
+from pydrnlp.annotations import Or, And, Not, ListOf, IteratorOf
+from pydrnlp.mkdoc import JSON
 
 
 # Could a custom pipeline do less work faster?
 # Also, is garbage an issue?
 nlp = spacy.load('en', disable=['parser','ner'])
 
-Contract = ModuleContract(__name__)
+NamedAnnotation = an.ModuleAnnotationNamer(__name__)
 
 @Predicate
 def Natural(any) -> bool:
@@ -20,23 +24,22 @@ def Natural(any) -> bool:
             (any >= 0))
 
 
-# revision : -> natural
-def revision() -> Natural:
-    """Returns a natural number identifying the current revision
+# tokenizerRevision : -> RevisionJsexpr
+def tokenizerRevision() -> RevisionJsexpr:
+    """Returns a non-False JSON expression identifying the current revision
 
     The intended purpose is for clients to
     be able to cache responses: 
-    As long as revision() returns the same number, 
+    As long as tokenizerRevision() returns the same number, 
     calling this API on the same input should return equivalent output.
     This enables clients to cache responses.
+    The returned value incorporates the result of
+    pydrnlp.drtoken.tokenFilterRevision().
 
-    When the result of revision() changes, any cache is stale.
-
-    For implementors: The number returned by revision()
-    should be incremented if their is any change to the
-    behavior *either* of this library *or* of its dependencies.
+    When the result of tokenizerRevision() changes, any cache is stale.
     """
-    return 0
+    thisModuleRevision = 0
+    return [0 , tokenFilterRevision()]
 
 
 @Predicate
@@ -46,10 +49,11 @@ def PositiveInt(any) -> bool:
             (any > 0))
 
 # for doc
-LemmaWithCount = Contract("LemmaWithCount",
-                          {"lemma": str,
-                           "text": str,
-                           "count": PositiveInt})
+LemmaWithCount = NamedAnnotation(
+    "LemmaWithCount",
+    {"lemma": str,
+     "text": str,
+     "count": PositiveInt})
 IterLemmaCount = IteratorOf(LemmaWithCount)
 
 
@@ -92,12 +96,14 @@ def tokensFilterUniqueLemma(seq : IteratorOf(Token)) -> IterLemmaCount:
                "count":countDict[token.lemma]}
 
 # for doc
-TokenizedSegment = Contract("TokenizedSegment",
-                            {"counter": Natural,
-                             "tokenized": ListOf(LemmaWithCount)})
-InputSegment = Contract("InputSegment",
-                        {"counter": Natural,
-                         "body": str})
+TokenizedSegment = NamedAnnotation(
+    "TokenizedSegment",
+    {"counter": Natural,
+     "tokenized": ListOf(LemmaWithCount)})
+InputSegment = NamedAnnotation(
+    "InputSegment",
+    {"counter": Natural,
+     "body": str})
 
 # tokenizeSegment :
 def tokenizeSegment(sgmnt : InputSegment) -> TokenizedSegment:
@@ -114,12 +120,14 @@ def tokenizeSegment(sgmnt : InputSegment) -> TokenizedSegment:
 
 
 # for doc
-InputDoc = Contract("InputDoc",
-                    {"key": str,
-                     "segments": ListOf(InputSegment)})
-TokenizedDoc = Contract("TokenizedDoc",
-                        {"key": str,
-                         "segments": ListOf(TokenizedSegment)})
+InputDoc = NamedAnnotation(
+    "InputDoc",
+    {"key": str,
+     "segments": ListOf(InputSegment)})
+TokenizedDoc = NamedAnnotation(
+    "TokenizedDoc",
+    {"key": str,
+     "segments": ListOf(TokenizedSegment)})
 
 
 

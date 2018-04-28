@@ -4,10 +4,15 @@ import inspect
 import pydoc
 import sys
 import json
-import pydrnlp.contract as cntct
+import pydrnlp.annotations as an
+from pydrnlp.annotations import Any, LazyAnnotation, NoDoc
+from pydrnlp.annotations import Or, ListOf, IteratorOf
 
 
-def run():
+NamedAnnotation = an.ModuleAnnotationNamer(__name__)
+
+
+def run() -> None:
     """Implements the command-line interface.
 
     Called when ƒpyflow{__name__ == "__main__"}.
@@ -32,8 +37,13 @@ def run():
         # TODO: show usage
         exit(1)
 
+
+ModpathDoc = [str, Or(False,
+                      "ErrorDuringImport",
+                      LazyAnnotation(lambda: ModuleDoc))]
+        
     
-def docModpath(modpath : str):
+def docModpath(modpath : str) -> ModpathDoc:
     try:
         # pydoc.safeimport might return None or
         # raise an ErrorDuringImport exception
@@ -47,51 +57,99 @@ def docModpath(modpath : str):
         # better to describe the error message
         return [modpath , "ErrorDuringImport"]
 
-    
-def docMod(mod : inspect.ismodule):
-    return {"functions": list(docFunctions(mod)),
-            "contracts": list(docContracts(mod)),
+
+Module = inspect.ismodule
+_RecursiveTextDoc = LazyAnnotation(lambda: TextDoc)
+ModuleDoc = {"text": _RecursiveTextDoc,
+             "functions":
+             ListOf(LazyAnnotation(lambda: FunctionDefinitionDoc)),
+             "named-annotations":
+             ListOf(LazyAnnotation(lambda: NamedAnnotationDefinitionDoc)),
+             "classes":
+             ListOf(LazyAnnotation(lambda: ClassDefinitionDoc))}
+
+
+def docMod(mod : Module) -> ModuleDoc:
+    return {"text": getDocText(mod),
+            "functions": list(docFunctions(mod)),
+            "named-annotations": list(docNamedAnnotations(mod)),
             "classes": list(docClasses(mod))}
 
 
-def getmembersFromHere(mod,pred):
-    def andFromHere(mod,pred):
-        return (lambda x:
-                (pred(x) and
-                 (mod ==  inspect.getmodule(x))))
-    return inspect.getmembers(mod,andFromHere(mod,pred))
+@NoDoc
+def _andShouldDoc(pred):
+    return (lambda x:
+            (pred(x) and
+             an.maybeShouldDoc(x)))
+
+@NoDoc
+def _getMembersResultOf(value : Any) -> an.isSpecialAnnotation:
+    return an.DictOf(str, value)
+
+@NoDoc
+def getmembersFromHere(mod : Module , pred) -> _getMembersResultOf(
+        # would be nicer to show that the vals satisfy pred
+        Any):
+    return inspect.getmembers(mod,
+                              _andShouldDoc(
+                                  lambda x:
+                                  (pred(x) and
+                                   (mod ==  inspect.getmodule(x)))))
 
 
-def iscontractFrom(mod):
+def getNamedAnnotations(mod : Module) -> _getMembersResultOf(
+        an.isNamedAnnotation):
     modName = mod.__name__
-    return (lambda x: (cntct.iscontract(x) and
-                       (modName == x.modName())))
+    return inspect.getmembers(mod,
+                              _andShouldDoc(
+                                  lambda x:
+                                  (an.isNamedAnnotation(x) and
+                                   (modName == x.modName()))))
 
+NamedAnnotationDefinitionDoc = {"name": str,
+                                "module": str,
+                                "value": an.NamedAnnotationDefinitionInsideDoc}
 
-def docContracts(mod):
-    for (name , value) in inspect.getmembers(mod, iscontractFrom(mod)):
+def docNamedAnnotations(mod : Module) -> IteratorOf(
+        NamedAnnotationDefinitionDoc):
+    for (name , value) in getNamedAnnotations(mod):
         yield {"name": name,
-               "module": cntct.getModName(value),
+               "module": value.modName(),
                "value": value.docSelf()}
 
+_RecursiveSignatureDoc = an.LazyAnnotation(lambda: SignatureDoc)
+ClassDefinitionDoc = {"name": str,
+                      "signature": _RecursiveSignatureDoc,
+                      "isSpecialAnnotationClass":
+                      an.IsSpecialAnnotationClassResultDoc,
+                      "text": _RecursiveTextDoc}
         
-def docClasses(mod):
+def docClasses(mod : Module) -> IteratorOf(ClassDefinitionDoc):
     for (name , value) in getmembersFromHere(mod,inspect.isclass):
         yield {"name": name,
                "signature": docSignature(value),
-               "isContractClass?": cntct.isContractClass(value),
+               "isSpecialAnnotationClass":
+               an.isSpecialAnnotationClass(value),
                "text": getDocText(value)}
 
+
+FunctionDefinitionDoc = {"name": str,
+                         "signature": _RecursiveSignatureDoc,
+                         "ispredicate": bool,
+                         "text": _RecursiveTextDoc}
         
-def docFunctions(mod):
+def docFunctions(mod : Module) -> IteratorOf(FunctionDefinitionDoc):
     for (name , value) in getmembersFromHere(mod, inspect.isfunction):
         yield {"name": name,
                "signature": docSignature(value),
-               "isPredicate?": cntct.ispredicate(value),
+               "ispredicate": an.ispredicate(value),
                "text": getDocText(value)}
 
+TextDoc = Or(False,
+             ["comments", str],
+             ["docstring", str])
         
-def getDocText(obj):
+def getDocText(obj : Any) -> TextDoc:
     docstr = inspect.getdoc(obj)
     if ((docstr is None) or (docstr == "")):
         cmts = inspect.getcomments(obj)
@@ -102,8 +160,15 @@ def getDocText(obj):
     else:
         return ["docstring", docstr]
 
+_MaybeAnnotationDoc = Or(False, an.AnnotationDoc)
+SignatureDoc = Or(
+    {"parameters": an.ListOf(LazyAnnotation(lambda: ParameterDoc)),
+     "return": _MaybeAnnotationDoc},
+    "ValueError",
+    "TypeError")    
 
-def docSignature(proc):
+
+def docSignature(proc : Any) -> SignatureDoc:
     def tryGetSig():
         try:
             return (True , inspect.signature(proc))
@@ -119,9 +184,21 @@ def docSignature(proc):
                 "return": docReturn(sig.return_annotation)}
     else:
         return sig
-    
 
-def docParameters(params):
+ParameterKindDoc = Or("POSITIONAL_ONLY",
+                      "POSITIONAL_OR_KEYWORD",
+                      "VAR_POSITIONAL",
+                      "KEYWORD_ONLY",
+                      "VAR_KEYWORD",
+                      False)
+ParameterDoc = {"name": str,    
+                "annotation": _MaybeAnnotationDoc,
+                "kind": ParameterKindDoc,
+                "default": Or(False, str)}
+
+
+def docParameters(params : inspect.Parameter) -> IteratorOf(
+        ParameterDoc):
     #print(params)
     def getDefault(p):
         it = p.default
@@ -134,7 +211,7 @@ def docParameters(params):
         if (it == inspect.Parameter.empty):
             return False
         else:
-            return cntct.docAnnotation(it)
+            return an.docAnnotation(it)
     def getKind(p):
         k = p.kind
         if (k == p.POSITIONAL_ONLY):
@@ -157,14 +234,20 @@ def docParameters(params):
                "default": getDefault(p)}
 
 
-def docReturn(return_ann):
+def docReturn(return_ann : Any) -> _MaybeAnnotationDoc:
     if (return_ann == inspect.Signature.empty):
         return False
     else:
-        return cntct.docAnnotation(return_ann)
+        return an.docAnnotation(return_ann)
 
+
+JSON = NamedAnnotation.singleton(
+    "JSON",
+    """An annotation for the kinds of values handled by the json module.
+    """)
     
-def dumpln(jsOut):
+    
+def dumpln(jsOut : JSON) -> None:
     json.dump(jsOut,sys.stdout)
     sys.stdout.write("\n")
 

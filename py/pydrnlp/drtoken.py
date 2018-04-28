@@ -2,7 +2,20 @@
 
 from spacy.lang.en.stop_words import STOP_WORDS
 from spacy.tokens import Token
+from pydrnlp.mkdoc import JSON
+from pydrnlp.annotations import ModuleAnnotationNamer, Or, And, Not
 
+
+NamedAnnotation = ModuleAnnotationNamer(__name__)
+RevisionJsexpr = NamedAnnotation(
+    "RevisionJsexpr",
+    And(JSON, Not(False)))
+
+
+def tokenFilterRevision() -> RevisionJsexpr:
+    return 0
+
+    
 # interestingPOS : str -> bool
 def interestingPOS(str : str) -> bool:
     """Recognizes the interesting potential values from token.pos_
