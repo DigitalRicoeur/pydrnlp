@@ -1,6 +1,7 @@
 #lang racket
 
 (require racket/generic
+         json
          "tokenized-result.rkt"
          syntax/parse/define
          racket/provide-syntax
@@ -75,10 +76,10 @@
        (or/c #f natural-number/c))]
   [pydrnlp-tokenizer-revision-evt
    (-> pydrnlp?
-       (evt/c (promise/c natural-number/c)))]
+       (evt/c (promise/c jsexpr?)))]
   [pydrnlp-tokenizer-revision
    (-> pydrnlp?
-       (promise/c natural-number/c))]
+       (promise/c jsexpr?))]
   [pydrnlp-tokenize-evt
    (-> pydrnlp? tokenize-arg/c
        (evt/c (promise/c tokenized-result?)))]

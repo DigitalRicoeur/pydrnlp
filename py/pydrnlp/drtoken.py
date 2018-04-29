@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Functions for filtering out uninteresting tokens.
+"""
 
 from spacy.lang.en.stop_words import STOP_WORDS
 from spacy.tokens import Token

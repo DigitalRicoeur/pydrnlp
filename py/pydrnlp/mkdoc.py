@@ -1,4 +1,24 @@
 # -*- coding: utf-8 -*-
+"""Library for extracting Python documentation and rendering to JSON.
+
+The functions in this library extract documentation from
+Python modules and render it to a structured JSON format.
+It primarily relies on docstrings and annotations to build
+the documentation, including the special annotations from
+pydrnlp.annotations.
+
+Documentation is currently extracted for functions, classes,
+and named annotations, as well as the module as a whole.
+
+The primary entry point to the library is docModpath(),
+though docMod() is also a viable choice.
+The interactive command-line behavior is encapsulated in run().
+
+The resulting JSON data should be convertable to a Scribble document.
+
+TODO: Need to determine if running this module as __main__
+causes bootstrapping issues for its named annotations etc.
+"""
 
 import inspect
 import pydoc
@@ -6,7 +26,7 @@ import sys
 import json
 import pydrnlp.annotations as an
 from pydrnlp.annotations import Any, LazyAnnotation, NoDoc
-from pydrnlp.annotations import Or, ListOf, IteratorOf
+from pydrnlp.annotations import Or, ListOf, IteratorOf, DictOf
 
 
 NamedAnnotation = an.ModuleAnnotationNamer(__name__)
@@ -44,6 +64,14 @@ ModpathDoc = [str, Or(False,
         
     
 def docModpath(modpath : str) -> ModpathDoc:
+    """Extracts documentation from the module at the given modpath.
+
+    The first element of the ModpathDoc is always the given modpath.
+    The second element might be False, meaning that the module
+    was not found, or "ErrorDuringImport", meaning that the module
+    was found, but an exception occured while trying to run it to 
+    obtain a module object.
+    """
     try:
         # pydoc.safeimport might return None or
         # raise an ErrorDuringImport exception
@@ -70,14 +98,17 @@ ModuleDoc = {"text": _RecursiveTextDoc,
 
 
 def docMod(mod : Module) -> ModuleDoc:
+    """Like docModpath, but operates on a module object.
+    """
     return {"text": getDocText(mod),
-            "functions": list(docFunctions(mod)),
-            "named-annotations": list(docNamedAnnotations(mod)),
-            "classes": list(docClasses(mod))}
+            "functions": list(_docFunctions(mod)),
+            "named-annotations": list(_docNamedAnnotations(mod)),
+            "classes": list(_docClasses(mod))}
 
 
 @NoDoc
 def _andShouldDoc(pred):
+    """Composes pred with a check to respect @NoDoc"""
     return (lambda x:
             (pred(x) and
              an.maybeShouldDoc(x)))
@@ -87,18 +118,36 @@ def _getMembersResultOf(value : Any) -> an.isSpecialAnnotation:
     return an.DictOf(str, value)
 
 @NoDoc
-def getmembersFromHere(mod : Module , pred) -> _getMembersResultOf(
+def _getmembersFromHere(mod : Module , pred) -> _getMembersResultOf(
         # would be nicer to show that the vals satisfy pred
         Any):
+    # pred should be either inspect.isfunction or inspect.isclass:
+    # note that inspect.getmodule doesn't work on arbitrary values
     return inspect.getmembers(mod,
                               _andShouldDoc(
                                   lambda x:
                                   (pred(x) and
                                    (mod ==  inspect.getmodule(x)))))
 
+def _getFunctions(mod : Module) -> _getMembersResultOf(
+        inspect.isfunction):
+    """Extracts the members of mod that are functions.
 
-def getNamedAnnotations(mod : Module) -> _getMembersResultOf(
+    The raw listing is filtered to eliminate values 
+    imported from other modules and to respect @NoDoc.
+    """
+    return _getmembersFromHere(mod, inspect.isfunction)
+
+def _getClasses(mod : Module) -> _getMembersResultOf(
+        inspect.isclass):
+    """Like _getFunctions, but for classes"""
+    return _getmembersFromHere(mod, inspect.isclass)
+
+def _getNamedAnnotations(mod : Module) -> _getMembersResultOf(
         an.isNamedAnnotation):
+    """Like _getFunctions, but for named annotations
+    (which require a fairly different implementation).
+    """
     modName = mod.__name__
     return inspect.getmembers(mod,
                               _andShouldDoc(
@@ -110,9 +159,13 @@ NamedAnnotationDefinitionDoc = {"name": str,
                                 "module": str,
                                 "value": an.NamedAnnotationDefinitionInsideDoc}
 
-def docNamedAnnotations(mod : Module) -> IteratorOf(
+def _docNamedAnnotations(mod : Module) -> IteratorOf(
         NamedAnnotationDefinitionDoc):
-    for (name , value) in getNamedAnnotations(mod):
+    """Extracts documentation for the named annotations from mod.
+    
+    The documented values are filtered as with _getNamedAnnotations.
+    """
+    for (name , value) in _getNamedAnnotations(mod):
         yield {"name": name,
                "module": value.modName(),
                "value": value.docSelf()}
@@ -124,8 +177,9 @@ ClassDefinitionDoc = {"name": str,
                       an.IsSpecialAnnotationClassResultDoc,
                       "text": _RecursiveTextDoc}
         
-def docClasses(mod : Module) -> IteratorOf(ClassDefinitionDoc):
-    for (name , value) in getmembersFromHere(mod,inspect.isclass):
+def _docClasses(mod : Module) -> IteratorOf(ClassDefinitionDoc):
+    """Like _docNamedAnnotations, but for classes."""
+    for (name , value) in _getClasses(mod):
         yield {"name": name,
                "signature": docSignature(value),
                "isSpecialAnnotationClass":
@@ -138,8 +192,9 @@ FunctionDefinitionDoc = {"name": str,
                          "ispredicate": bool,
                          "text": _RecursiveTextDoc}
         
-def docFunctions(mod : Module) -> IteratorOf(FunctionDefinitionDoc):
-    for (name , value) in getmembersFromHere(mod, inspect.isfunction):
+def _docFunctions(mod : Module) -> IteratorOf(FunctionDefinitionDoc):
+    """Like _docNamedAnnotations, but for functions."""
+    for (name , value) in _getFunctions(mod):
         yield {"name": name,
                "signature": docSignature(value),
                "ispredicate": an.ispredicate(value),
@@ -150,16 +205,30 @@ TextDoc = Or(False,
              ["docstring", str])
         
 def getDocText(obj : Any) -> TextDoc:
+    """Attempts to get some text documenting obj.
+
+    The result is tagged based on what was obtained:
+    getDocText() first tries to get a docstring,
+    then tries to extract source-code comments near
+    the definition of the object.
+    If both options fail or return empty strings,
+    returns False.
+    """
+    def resultIsEmpty(x):
+        return ((x is None) or
+                (x == "") or
+                x.isspace())
     docstr = inspect.getdoc(obj)
-    if ((docstr is None) or (docstr == "")):
+    if resultIsEmpty(docstr):
         cmts = inspect.getcomments(obj)
-        if ((cmts is None) or (cmts == "")):
+        if resultIsEmpty(cmts):
             return False
         else:
             return ["comments", cmts]
     else:
         return ["docstring", docstr]
 
+    
 _MaybeAnnotationDoc = Or(False, an.AnnotationDoc)
 SignatureDoc = Or(
     {"parameters": an.ListOf(LazyAnnotation(lambda: ParameterDoc)),
@@ -169,6 +238,18 @@ SignatureDoc = Or(
 
 
 def docSignature(proc : Any) -> SignatureDoc:
+    """Tries to extract documentation about the signature
+    of the given object.
+
+    The result may be "TypeError" if the given object
+    does not support signatures or "ValueError" if it does,
+    but no signature could be found.
+    Otherwise, the dictionary gives information about the 
+    parameters and return annotation.
+    The return annotation may be False to indicate that no
+    annotation was provided: otherwise, it will be a 
+    pydrnlp.annotations.AnnotationDoc.
+    """
     def tryGetSig():
         try:
             return (True , inspect.signature(proc))
@@ -181,10 +262,11 @@ def docSignature(proc : Any) -> SignatureDoc:
     ok , sig = tryGetSig()
     if ok:
         return {"parameters": list(docParameters(sig.parameters)),
-                "return": docReturn(sig.return_annotation)}
+                "return": _docReturn(sig.return_annotation)}
     else:
         return sig
 
+    
 ParameterKindDoc = Or("POSITIONAL_ONLY",
                       "POSITIONAL_OR_KEYWORD",
                       "VAR_POSITIONAL",
@@ -197,8 +279,21 @@ ParameterDoc = {"name": str,
                 "default": Or(False, str)}
 
 
-def docParameters(params : inspect.Parameter) -> IteratorOf(
+def docParameters(params : DictOf(str, inspect.Parameter)) -> IteratorOf(
         ParameterDoc):
+    """Extracts documentation for parameters from a signature object.
+
+    The "annotation" field may be False if no annotation was provided:
+    otherwise, it will be a pydrnlp.annotations.AnnotationDoc.
+
+    The "default" field will be False if there is no default
+    value for that argument: otherwise, it is the default
+    value converted to string form.
+
+    The "kind" field will only be False if the raw kind value is
+    unknown, which should likely trigger an exception in higher-level
+    code. (Currently, this is deferred to the Racket side.)
+    """
     #print(params)
     def getDefault(p):
         it = p.default
@@ -234,7 +329,8 @@ def docParameters(params : inspect.Parameter) -> IteratorOf(
                "default": getDefault(p)}
 
 
-def docReturn(return_ann : Any) -> _MaybeAnnotationDoc:
+def _docReturn(return_ann : Any) -> _MaybeAnnotationDoc:
+    """Used to implement docSignature"""
     if (return_ann == inspect.Signature.empty):
         return False
     else:
@@ -243,11 +339,15 @@ def docReturn(return_ann : Any) -> _MaybeAnnotationDoc:
 
 JSON = NamedAnnotation.singleton(
     "JSON",
-    """An annotation for the kinds of values handled by the json module.
+    """An annotation values that can be converted to or from
+    JSON by the json module.
     """)
     
     
 def dumpln(jsOut : JSON) -> None:
+    """Writes jsOut to standard output as JSON, 
+    followed by a newline.
+    """
     json.dump(jsOut,sys.stdout)
     sys.stdout.write("\n")
 

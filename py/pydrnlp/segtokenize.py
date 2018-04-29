@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Core functionality for tokenizing segmented documents.
+"""
 
 import spacy
 from spacy.lang.en.stop_words import STOP_WORDS
