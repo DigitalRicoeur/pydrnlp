@@ -15,12 +15,6 @@
            correct-pydrnlp/c
            ))
 
-;; TODO: should it be an error to send to a pydrnlp-dead?
-;; Currently it just results in evts that
-;; never become ready.
-;; This seems right for the most primitive level, b/c versions
-;; that error could be built with pydrnlp-dead-evt.
-
 (define-generics pydrnlp
   (pydrnlp-dead-evt pydrnlp)
   (pydrnlp-dead? pydrnlp)
@@ -36,9 +30,10 @@
      [(_ blocking:id nonblocking:id)
       #'(define-blocking blocking () nonblocking)]
      [(_ blocking:id (extra-formal:id ...) nonblocking:id)
-      #'(begin (define/generic super-nonblocking nonblocking)
-               (define (blocking pydrnlp extra-formal ...)
-                 (sync (super-nonblocking pydrnlp extra-formal ...))))])
+      #'(begin
+          (define/generic super-nonblocking nonblocking)
+          (define (blocking pydrnlp extra-formal ...)
+            (force (sync (super-nonblocking pydrnlp extra-formal ...)))))])
    (define-blocking pydrnlp-tokenizer-revision
      pydrnlp-tokenizer-revision-evt)
    (define-blocking pydrnlp-tokenize (to-send)
@@ -79,13 +74,13 @@
        (evt/c (promise/c jsexpr?)))]
   [pydrnlp-tokenizer-revision
    (-> pydrnlp?
-       (promise/c jsexpr?))]
+       jsexpr?)]
   [pydrnlp-tokenize-evt
    (-> pydrnlp? tokenize-arg/c
-       (evt/c (promise/c tokenized-result?)))]
+       (evt/c (promise/c tokenization-results/c)))]
   [pydrnlp-tokenize
    (-> pydrnlp? tokenize-arg/c
-       (promise/c tokenized-result?))]
+       tokenization-results/c)]
   )
 
 

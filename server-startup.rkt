@@ -6,8 +6,7 @@
          (for-syntax syntax/parse
                      ))
 
-(provide ip-port-num/c 
-         (contract-out
+(provide (contract-out
           [start-server-process
            (-> (-> (or/c 'status
                          'exit-code
@@ -42,10 +41,6 @@
   (make-derived-parameter flask-root-url
                           make-root-url
                           url-port))
-
-(define ip-port-num/c
-  ;; maybe to adjutor?
-  (integer-in 0 65535))
 
 (define init-env
   (current-environment-variables))

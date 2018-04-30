@@ -4,6 +4,7 @@
          "http-request.rkt"
          "interface.rkt"
          (submod "interface.rkt" private)
+         adjutor
          )
 
 (provide basic-pydrnlp?
@@ -16,6 +17,24 @@
                         #:quiet? any/c}
                        correct-pydrnlp/c)]
           ))
+
+;; THINK!
+
+;; For background threads, do I also need
+;; 3rd parties' custodians?
+;; I don't think so, but I should read
+;; "Kill-Safe Abstractions" again.
+
+;; What is actually the right behavior for
+;; the event produced by pydrnlp-tokenize-evt?
+;; Currently it requests only when a sync is attempted
+;; and aborts if the sync stops, which means that the event
+;; would have to be reconstructed on each call to sync.
+;; I think you could get the "stubborn"
+;; semantics by just syncing in a background thread.
+;; Would that result in the value potentially being sent
+;; multiple times? Maybe the worker should keep a weak
+;; cache to prevent that.
 
 (struct basic-pydrnlp (cust dead-evt dead?-proc revision-evt worker)
   #:methods gen:pydrnlp
@@ -50,6 +69,7 @@
                    [flask-port port])
       (values (start-server-process)
               (make-worker))))
+  (make-watcher control cust)
   (basic-pydrnlp cust
                  (make-dead-evt cust control)
                  (make-dead?-proc control)
@@ -117,6 +137,14 @@
   (wrap-evt promise
             (λ (_)
               (force promise))))
+
+(define (make-watcher control cust)
+  (parameterize ([current-custodian lib-cust])
+    (thread (λ ()
+              (control 'wait)
+              (custodian-shutdown-all cust))))
+  (void))
+  
           
 (define (make-tokenize-evt worker arg)
   (make-worker-do-evt worker

@@ -8,14 +8,13 @@
 (provide lemma->count/c
          lemma->string/c
          tokenize-arg/c
+         tokenization-results/c
          (contract-out
-          [struct tokenized-result
+          [struct tokenized-document
             ([lemma->string lemma->string/c]
-             [results (hash/c string?
-                              (hash/c natural-number/c
-                                      lemma->count/c
-                                      #:immutable #t)
-                              #:immutable #t)])
+             [segments (hash/c natural-number/c
+                               lemma->count/c
+                               #:immutable #t)])
             #:omit-constructor]
           [union:lemma->count
            (-> lemma->count/c lemma->count/c ... lemma->count/c)]
@@ -30,8 +29,11 @@
              (-> tokenize-arg/c jsexpr?)]
             [handle-tokenize-jsexpr-result
              (-> tokenizer-jsexpr-result/c
-                 tokenized-result?)]
+                 tokenization-results/c)]
             )))
+
+(struct tokenized-document (lemma->string segments)
+  #:transparent)
 
 (define tokenize-arg/c
   (hash/c string?
@@ -49,18 +51,19 @@
           string?
           #:immutable #t))
 
+(define tokenization-results/c
+  (hash/c string?
+          tokenized-document?
+          #:immutable #t))
 
 (define (tokenize-arg->jsexpr arg)
   (for/list ([{key segments} (in-immutable-hash arg)])
     (hasheq 'key key
             'segments
-            (for/list ([{counter body} (in-immutable-hash segments)])
+            (for/list ([{counter body}
+                        (in-immutable-hash segments)])
               (hasheq 'counter counter
                       'body body)))))
-
-
-(struct tokenized-result (lemma->string results)
-  #:transparent)
 
 
 (define tokenizer-jsexpr-result/c
@@ -105,19 +108,16 @@
   
 
 (define (handle-tokenize-jsexpr-result js)
-  (for/fold ([super:lemma->string #hasheq()]
-             [results #hash()]
-             #:result (tokenized-result super:lemma->string results))
-            ([doc (in-list js)])
+  (for/hash ([doc (in-list js)])
     (match-let ([(hash-table ['key key]
                              ['segments segments])
                  doc])
-      (for/fold ([lemma->string super:lemma->string]
+      (for/fold ([lemma->string #hasheq()]
                  [seg-results #hasheqv()]
                  #:result
-                 (values (union:lemma->string super:lemma->string
-                                              lemma->string)
-                         (hash-set results key seg-results)))
+                 (values key
+                         (tokenized-document lemma->string
+                                             seg-results)))
                 ([seg (in-list segments)])
         (match-let*-values ([{(hash-table ['counter counter]
                                           ['tokenized tokenized])}
@@ -140,12 +140,27 @@
        (values (hash-set lemma->string lemma text)
                (hash-set lemma->count lemma count))])))
 
-(define (union:lemma->count . hashes)
-  (apply hash-union
-         #:combine +
-         hashes))
+
+
+
+(define (make-union-proc combine)
+  (case-lambda
+    ;; Trivial
+    [(x) x]
+    ;; Common
+    [(a b)
+     (hash-union a b #:combine combine)]
+    ;; General
+    [hashes
+     (apply hash-union
+            #:combine combine
+            hashes)]))
+
+(define union:lemma->count
+  (make-union-proc +))
 
 (define cache:string-folds-to-self?
+  ;; should this be a weak set ?
   (make-weak-hash))
 
 (define (string-folds-to-self? str)
@@ -156,11 +171,14 @@
                 (hash-set! cache:string-folds-to-self? str rslt)
                 rslt))))
 
-(define (union:lemma->string . hashes)
-  (apply hash-union
-         #:combine (λ (a b)
-                     (if (string-folds-to-self? a)
+(define union:lemma->string
+  (make-union-proc (λ (a b)
+                     (if (or (equal? a b)
+                             (string-folds-to-self? a))
                          a
-                         b))
-         hashes))
+                         b))))
+    
+
+
+
 

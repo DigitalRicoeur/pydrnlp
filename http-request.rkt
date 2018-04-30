@@ -12,7 +12,7 @@
            (-> (promise/c jsexpr?))] ;; more specific?
           [make-do-request/tokenize
            (-> (-> tokenize-arg/c
-                   (promise/c tokenized-result?)))]
+                   (promise/c tokenization-results/c)))]
           ))
 
 ;; These functions return promises so that exceptions
