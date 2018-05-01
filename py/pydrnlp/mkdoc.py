@@ -230,11 +230,12 @@ def getDocText(obj : Any) -> TextDoc:
 
     
 _MaybeAnnotationDoc = Or(False, an.AnnotationDoc)
-SignatureDoc = Or(
-    {"parameters": an.ListOf(LazyAnnotation(lambda: ParameterDoc)),
-     "return": _MaybeAnnotationDoc},
-    "ValueError",
-    "TypeError")    
+SignatureDoc = NamedAnnotation(
+    "SignatureDoc",
+    Or({"parameters": an.ListOf(LazyAnnotation(lambda: ParameterDoc)),
+        "return": _MaybeAnnotationDoc},
+       "ValueError",
+       "TypeError"))    
 
 
 def docSignature(proc : Any) -> SignatureDoc:
@@ -339,7 +340,7 @@ def _docReturn(return_ann : Any) -> _MaybeAnnotationDoc:
 
 JSON = NamedAnnotation.singleton(
     "JSON",
-    """An annotation values that can be converted to or from
+    """An annotation for values that can be converted to or from
     JSON by the json module.
     """)
     

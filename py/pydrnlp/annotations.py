@@ -38,14 +38,20 @@ class _BootstrappingLazyAnnotation(_AbstractSpecialAnnotation):
     def __init__(self, thunk):
         self.__thunk = thunk
         self.__forced = False
-    def _docSpecialAnnotation(self):
+    def __DoForce(self):
         forced = self.__forced
         if forced:
             return forced[0]
         else:
-            rslt = docAnnotation(self.__thunk())
-            self.__forced = (rslt)
-            return rslt    
+            rslt = self.__thunk()
+            self.__forced = [ rslt ]
+            return rslt
+    def __str__(self):
+        return str(self.__DoForce())
+    def __repr__(self):
+        return repr(self.__DoForce())
+    def _docSpecialAnnotation(self):
+        return docAnnotation(self.__DoForce())
 
         
 ## Any, Predicate, and NoDoc need to come here for bootstrapping
@@ -120,6 +126,16 @@ def isSpecialAnnotation(any : Any) -> bool:
     return isinstance(any, _AbstractSpecialAnnotation)
 
 
+@NoDoc
+def _AACPrintContent(content, recur):
+    if 0 == len(content):
+        return ""
+    else:
+        ret = recur(content[0])
+        for child in content[1::]:
+            ret = ret + ", " + recur(child)
+        return ret    
+
 class _AbstractAnnotationConstructor(_AbstractSpecialAnnotation):
     """Annotation constructors are subclasses of this class.
     """
@@ -127,6 +143,13 @@ class _AbstractAnnotationConstructor(_AbstractSpecialAnnotation):
     def __init__(self, args : _BootstrappingLazyAnnotation(
             lambda: IteratorOf(Any))):
         self._args = args
+    def __print(self, recur):
+        content = _AACPrintContent(self._args, recur)
+        return self.name() + "(" + content + ")"
+    def __str__(self):
+        return self.__print(str)
+    def __repr__(self):
+        return self.__print(repr)
     def _docSpecialAnnotation(self) -> _BootstrappingLazyAnnotation(
             lambda: _AnnotationConstructorDoc):
         return ["annotation-constructor",
@@ -150,7 +173,7 @@ class ThunkOf(_LocalAbstractAnnConst):
     """
     # Needed by LazyAnnotation
     def __init__(self, rslt : Any):
-        _AbstractAnnotationConstructor.__init__(self, [rslt])
+        _AbstractAnnotationConstructor.__init__(self, [ rslt ])
     @staticmethod
     def name():
         return "ThunkOf"    
@@ -180,7 +203,7 @@ class Or(_LocalAbstractAnnConst):
     annotations are satisfied.
     """
     def __init__(self, *args : Any):
-        _AbstractAnnotationConstructor.__init__(self,args)
+        _AbstractAnnotationConstructor.__init__(self, args)
     @staticmethod
     def name():
         return "Or"
@@ -194,7 +217,7 @@ class And(_LocalAbstractAnnConst):
     its args annotations are satisfied.
     """
     def __init__(self, *args : Any):
-        _AbstractAnnotationConstructor.__init__(self,args)
+        _AbstractAnnotationConstructor.__init__(self, args)
     @staticmethod
     def name():
         return "And"     
@@ -233,6 +256,10 @@ class _NamedAnnotation(_AbstractSpecialAnnotation):
                 {"module": self.modName(), 
                  "name": self.name(),
                  "string": str(self)}]
+    def __repr__(self):
+        return self.name()
+    def __str__(self):
+        return self.name()
     def docSelf(self) -> LazyAnnotation(
             lambda: NamedAnnotationDefinitionInsideDoc):
         v = self._value
@@ -255,7 +282,7 @@ class ListOf(_LocalAbstractAnnConst):
     satisfy the inner annotation.
     """
     def __init__(self, inner : Any):
-        _AbstractAnnotationConstructor.__init__(self, [inner])
+        _AbstractAnnotationConstructor.__init__(self, [ inner ])
     @staticmethod        
     def name() -> str:
         return "ListOf"
@@ -266,7 +293,7 @@ class IteratorOf(_LocalAbstractAnnConst):
     satisfy the inner annotation.
     """
     def __init__(self, inner : Any):
-        _AbstractAnnotationConstructor.__init__(self, [inner])
+        _AbstractAnnotationConstructor.__init__(self, [ inner ])
     @staticmethod
     def name():
         return "IteratorOf" 
@@ -277,7 +304,7 @@ class Not(_LocalAbstractAnnConst):
     its inner annotation is ƒb{not} satisfied.
     """
     def __init__(self, inner : Any):
-        _AbstractAnnotationConstructor.__init__(self, [inner])
+        _AbstractAnnotationConstructor.__init__(self, [ inner ])
     @staticmethod
     def name():
         return "Not"  
@@ -288,7 +315,7 @@ class DictOf(_LocalAbstractAnnConst):
     match the key annotation and the values match the value annotation.
     """
     def __init__(self, key : Any , value : Any):
-        _AbstractAnnotationConstructor.__init__(self, (key , value))
+        _AbstractAnnotationConstructor.__init__(self, [ key , value ])
     @staticmethod
     def name():
         return "DictOf"   

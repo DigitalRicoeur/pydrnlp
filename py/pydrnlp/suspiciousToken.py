@@ -24,7 +24,7 @@ from spacy.lang.en.stop_words import STOP_WORDS
 import json
 import sys
 from pydrnlp.drtoken import tokenQuicklyFails
-from pydrnlp.annotate import IteratorOf
+from pydrnlp.annotations import IteratorOf
 
 nlp = spacy.load('en', disable=['parser','ner'])
 

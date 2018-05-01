@@ -1,0 +1,1 @@
+[["pydrnlp.restful", {"text": ["docstring", "Provides a RESTful HTTP interface to pydrnlp.segtokenize.\n\nThis module is intended to be set as the \"FLASK_APP\"\nenvironment variable."], "functions": [], "named-annotations": [], "classes": []}]]
