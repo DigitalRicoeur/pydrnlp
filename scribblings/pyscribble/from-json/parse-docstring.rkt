@@ -3,8 +3,8 @@
 (require scribble/reader
          racket/match
          racket/contract
-         "adt/proto-content.rkt"
-         "adt/pass0.rkt"
+         "../adt/proto-content.rkt"
+         "../adt/pass0.rkt"
          )
 
 (provide (contract-out

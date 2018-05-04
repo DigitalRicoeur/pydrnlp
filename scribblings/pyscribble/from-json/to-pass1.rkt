@@ -1,8 +1,11 @@
 #lang typed/racket
 
-(require (submod "adt/pass1.rkt" typed)
+(provide modpath-doc:pass0->pass1
+         )
+
+(require (submod "../adt/pass1.rkt" typed)
          (prefix-in pass0:
-                    "adt/pass0/doc.rkt")
+                    "../adt/pass0/doc.rkt")
          )
 
 (require/typed
@@ -107,6 +110,12 @@
       (and name (full-value-name intended-mod intended-declared))
       declared-name
       annotation/singleton)
-     (assert (equal? mod-name intended-mod))
-     (assert (equal? intended-declared declared-name))
+     (unless (and (equal? mod-name intended-mod)
+                  (equal? declared-name intended-declared))
+       (eprintf "mod-name:  ~e\nintended-mod:  ~e\n"
+                mod-name intended-mod)
+       (eprintf "declared-name:  ~e\nintended-declared:  ~e\n"
+                declared-name intended-declared)
+       (assert (equal? mod-name intended-mod))
+       (assert (equal? intended-declared declared-name)))
      (named-ann-doc name info annotation/singleton)]))

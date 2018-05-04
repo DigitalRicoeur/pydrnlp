@@ -350,7 +350,7 @@ LocalNamedAnnotation = ModuleAnnotationNamer(__name__)
 _RecursiveAnnotationDoc = LazyAnnotation(lambda: AnnotationDoc)
 
 NamedAnnotationDefinitionInsideDoc = LocalNamedAnnotation(
-    "NamedAnnotationDefinitionDoc",
+    "NamedAnnotationDefinitionInsideDoc",
     {"name": str,
      "docstring": _MaybeStr,
      "value": Or(["singleton"], _RecursiveAnnotationDoc)})
