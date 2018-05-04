@@ -119,9 +119,10 @@
                   gave-up-evt))))
 
 (define skip-gave-up
-  (match-lambda
+  values
+  #;(match-lambda
     [(and this (msg _ gave-up-evt))
-     (and (sync/timeout 0 gave-up-evt)
+     (or (sync/timeout 0 gave-up-evt)
           this)]
     [bad bad]))
 
@@ -132,8 +133,9 @@
   (define promise
     (parameterize ([current-custodian lib-cust])
       (delay/thread
-       (make-worker-do-evt worker
-                           msg:tokenizer-revision))))
+       (sync
+        (make-worker-do-evt worker
+                            msg:tokenizer-revision)))))
   (wrap-evt promise
             (λ (_)
               (force promise))))

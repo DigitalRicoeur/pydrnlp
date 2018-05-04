@@ -121,35 +121,6 @@
                       (number->string (flask-port)))))
   control)
 
-#|
-(define-syntax (environment-variables-set!* stx)
-  (define-splicing-syntax-class spec
-    #:description "key/value pair"
-    #:attributes {key value}
-    (pattern (~seq (~describe "key expression" k)
-                   (~describe "value expression" v))
-             #:declare k (expr/c #'bytes-environment-variable-name?
-                                 #:name "key expression")
-             #:declare v (expr/c #'(or/c bytes-no-nuls? #f)
-                                 #:name "value expression")
-             #:with key #'k.c
-             #:with value #'v.c))
-  (define-syntax-class envvars
-    #:description "environment variables expression"
-    #:attributes {c}
-    (pattern env
-             #:declare env (expr/c #'environment-variables?
-                                   #:name "environment variables expression")
-             #:with c #'env.c))
-  (syntax-parse stx
-    [(_ env:envvars) #'(void env.c)]
-    [(_ env-expr:envvars
-        pair:spec ...+)
-     #`(let ([env env-expr.c])
-         (environment-variables-set! env pair.key pair.value)
-         ...)]))
-|#
-
 
 (define (test-start-server port)
   (parameterize ([flask-port port]

@@ -26,7 +26,7 @@ import sys
 from pydrnlp.drtoken import tokenQuicklyFails
 from pydrnlp.annotations import IteratorOf
 
-nlp = spacy.load('en', disable=['parser','ner'])
+nlp = spacy.load('en_core_web_sm', disable=['parser','ner'])
 
 
 def getSuspiciousTokens(str : str) -> IteratorOf(

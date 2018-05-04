@@ -22,23 +22,6 @@
   ;;;;
   (pydrnlp-tokenizer-revision-evt pydrnlp)
   (pydrnlp-tokenize-evt pydrnlp to-send)
-  ;;;;
-  (pydrnlp-tokenizer-revision pydrnlp)
-  (pydrnlp-tokenize pydrnlp to-send)
-  #:fallbacks
-  [(define-syntax-parser define-blocking
-     [(_ blocking:id nonblocking:id)
-      #'(define-blocking blocking () nonblocking)]
-     [(_ blocking:id (extra-formal:id ...) nonblocking:id)
-      #'(begin
-          (define/generic super-nonblocking nonblocking)
-          (define (blocking pydrnlp extra-formal ...)
-            (force (sync (super-nonblocking pydrnlp extra-formal ...)))))])
-   (define-blocking pydrnlp-tokenizer-revision
-     pydrnlp-tokenizer-revision-evt)
-   (define-blocking pydrnlp-tokenize (to-send)
-     pydrnlp-tokenize-evt)
-   #|END #:fallbacks|#]
   #|END define-generics pydrnlp|#)
 
 
@@ -56,8 +39,26 @@
          (provide (contract-out
                    [method contract] ...)))]))
 
+(define-syntax-parser define-blocking
+  [(_ blocking:id nonblocking:id)
+   #'(define-blocking blocking () nonblocking)]
+  [(_ blocking:id (extra-formal:id ...) nonblocking:id)
+   #'(define (blocking pydrnlp extra-formal ...)
+       (force (sync (nonblocking pydrnlp extra-formal ...))))])
+(define-blocking pydrnlp-tokenizer-revision
+  pydrnlp-tokenizer-revision-evt)
+(define-blocking pydrnlp-tokenize (to-send)
+  pydrnlp-tokenize-evt)
+
 (provide pydrnlp?
-         )
+         (contract-out
+          [pydrnlp-tokenizer-revision
+           (-> pydrnlp?
+               jsexpr?)]
+          [pydrnlp-tokenize
+           (-> pydrnlp? tokenize-arg/c
+               tokenization-results/c)]
+          ))
 
 (provide/contract+define-generic-contract
   correct-pydrnlp/c pydrnlp/c
@@ -72,15 +73,9 @@
   [pydrnlp-tokenizer-revision-evt
    (-> pydrnlp?
        (evt/c (promise/c jsexpr?)))]
-  [pydrnlp-tokenizer-revision
-   (-> pydrnlp?
-       jsexpr?)]
   [pydrnlp-tokenize-evt
    (-> pydrnlp? tokenize-arg/c
        (evt/c (promise/c tokenization-results/c)))]
-  [pydrnlp-tokenize
-   (-> pydrnlp? tokenize-arg/c
-       tokenization-results/c)]
   )
 
 

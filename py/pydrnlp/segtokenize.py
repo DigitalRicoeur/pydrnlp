@@ -15,7 +15,7 @@ from pydrnlp.mkdoc import JSON
 
 # Could a custom pipeline do less work faster?
 # Also, is garbage an issue?
-nlp = spacy.load('en', disable=['parser','ner'])
+nlp = spacy.load('en_core_web_sm', disable=['parser','ner'])
 
 NamedAnnotation = an.ModuleAnnotationNamer(__name__)
 
