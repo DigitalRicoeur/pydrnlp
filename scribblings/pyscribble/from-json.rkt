@@ -1,37 +1,173 @@
 #lang racket
 
-(require "adt.rkt"
-         "from-json-utils.rkt"
+(require "adt/pass0.rkt"
          json
          syntax/parse
-         data/maybe
+         adjutor
+         racket/runtime-path
          (for-syntax syntax/parse
                      ))
+
+(provide (contract-out
+          [jsexpr->modpath-doc
+           (-> (list/c string? jsexpr?)
+               modpath-doc?)]
+          ))
+
+(module+ scratch
+  (provide parse-file json-paths))
+
+(module+ main
+  (flatten
+   (map parse-file json-paths)))
+
+;; Functional support
+;; (This needs to come first b/c of app^.)
 
 (define (parse-file pth)
   (call-with-input-file* pth
     (λ (in) (map jsexpr->modpath-doc
                  (read-json in)))))
 
-(module+ main
-  (map parse-file json-paths))
-#|
-(module+ main
-  (for-each parse-file json-paths)
-  'done)
+(define-runtime-path-list json-paths
+  (map (λ (x) (format "extracted/~a.json" x))
+       '(annotations
+         restful
+         suspiciousToken 
+         drtoken
+         segtokenize
+         mkdoc
+         stdio
+         )))
+
+(match-define (list json:annotations
+                    json:restful
+                    json:suspiciousToken 
+                    json:drtoken
+                    json:segtokenize
+                    json:mkdoc
+                    json:stdio)
+  json-paths)
+
+(def
+  [((partition-by pred?) lst)
+   (partition pred? lst)]
+  [((private? get-sym) it)
+   (regexp-match? #rx"^_" (symbol->string (get-sym it)))]
+  [function-doc*-private?
+   (private? function-doc*-local-name)]
+  [class-doc*-private?
+   (private? class-doc*-local-name)]
+  [named-ann-doc-private?
+   (private? named-ann-doc-declared-name)])
+
+(define (string->full-mod-name str)
+  (full-mod-name (map string->symbol
+                      (regexp-split #rx"\\." str))))
+
+(define-match-expander app^
+  (syntax-parser
+    [(_ pred:expr pat ...)
+     #`(app #,(syntax-local-lift-expression #'pred)
+            pat
+            ...)]))
+
+
+;                                                                          
+;                                                                          
+;                                                                          
+;                                                                          
+;       ;;;                                    ;                           
+;     ;;                                       ;;                          
+;   ;;;;;;; ;; ;;;   ;;;   ; ;; ;;          ;;;;;     ;;     ;;;    ;; ;   
+;     ;;    ;;;     ;   ;  ;; ;; ;             ;;   ;;  ;   ;   ;   ;;; ;  
+;     ;;    ;;      ;   ;  ;; ;; ;;            ;;    ;      ;   ;   ;;  ;; 
+;     ;;    ;;     ;;   ;; ;; ;; ;;            ;;     ;;   ;;   ;;  ;;  ;; 
+;     ;;    ;;      ;   ;  ;; ;; ;;            ;;       ;;  ;   ;   ;;  ;; 
+;     ;;    ;;      ;   ;  ;; ;; ;;            ;;   ;   ;   ;   ;   ;;  ;; 
+;     ;;    ;;       ;;;   ;; ;; ;;            ;;    ;;;     ;;;    ;;  ;; 
+;                                              ;;                          
+;                                              ;                           
+;                                           ;;;                            
+;                                                                          
+
   
-#;
-(module+ main
-  (for/list ([pth (cdr json-paths)]
-             [i (in-naturals)])
-    (println i)
-    (match-define-values {_ name _}
-      (split-path pth))
-    (cons (path->string name)
-          (with-handlers ([exn:fail? exn-message])
-            (parse-file pth)
-            'parsed))))
-|#
+(define (jsexpr->modpath-doc arg)
+  (match-define (list (app string->full-mod-name
+                           mod)
+                      body)
+    arg)
+  (modpath-doc
+   mod
+   (with-handlers ([exn:fail? values])
+     (syntax-parse (datum->syntax #f body)
+       #:context 'jsexpr->modpath-doc
+       [#f #f]
+       ["ErrorDuringImport" 'ErrorDuringImport]
+       [(~hash-object
+         [text intro:docstring/comment/missing-js]
+         [functions (funcs:function-js ...)]
+         [classes (classes:class-js ...)]
+         [named-annotations (n-a*:named-annotation-js ...)])
+        (match-let
+            ([(app^ (partition-by function-doc*-private?)
+                    (app^ (partition-by predicate-doc?)
+                          private-predicates
+                          private-functions)
+                    (app^ (partition-by predicate-doc?)
+                          public-predicates
+                          public-functions))
+              (attribute funcs.parsed)]
+             [(app^ (partition-by named-ann-doc-private?)
+                    private-named-annotations
+                    public-named-annotations)
+              (attribute n-a*.parsed)]
+             [(app^ (partition-by class-doc*-private?)
+                    (app^ (partition-by annotation-class-doc?)
+                          private-annotation-classes
+                          private-classes)
+                    (app^ (partition-by annotation-class-doc?)
+                          public-annotation-classes
+                          public-classes))
+              (attribute classes.parsed)])
+          (module-doc
+           (attribute intro.parsed)
+           (module-section public-classes
+                           public-annotation-classes
+                           public-functions
+                           public-predicates
+                           public-named-annotations)
+           (module-section private-classes
+                           private-annotation-classes
+                           private-functions
+                           private-predicates
+                           private-named-annotations)))]))))
+         
+
+;                                                  
+;                                                  
+;                                                  
+;                                                  
+;                            ;;                    
+;                            ;;                    
+;     ;;   ;     ;  ;; ;   ;;;;;;;    ;;   ;;   ;; 
+;   ;;  ;   ;   ;   ;;; ;    ;;      ;  ;    ;  ;  
+;    ;      ;   ;   ;;  ;;   ;;         ;;   ; ;   
+;     ;;     ;  ;   ;;  ;;   ;;       ;;;;    ;    
+;       ;;   ; ;    ;;  ;;   ;;      ;  ;;   ; ;   
+;   ;   ;    ; ;    ;;  ;;    ;     ;;  ;;  ;   ;  
+;    ;;;      ;     ;;  ;;     ;;;   ;;; ; ;;   ;; 
+;             ;                                    
+;            ;                                     
+;          ;;                                      
+;                                                  
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Hash-table "object" patterns
+;; --------------------------------------------------------
+;; The pattern-expanders must come behave strangely
+;; if they aren't this high in the file.
 
 (define-syntax-class hash
   #:description "a hash table"
@@ -65,14 +201,7 @@
                  #'([it.k it.v] (... ...)))
          post-pat ...)])))
 
-(define-syntax-class modpath
-  #:description #f
-  #:attributes {parsed}
-  (pattern mod:str
-           #:attr parsed
-           (string->full-mod-name (syntax->datum #'mod))))
-
-(define-syntax ~full-value-name-jsexpr
+(define-syntax ~hash-object•full-value-name
   (pattern-expander
    (syntax-parser
      [(_ bind:id
@@ -91,182 +220,7 @@
                  (string->symbol (syntax->datum #'n)))))
          post-pat ...)])))
 
-(define-syntax-class annotation
-  #:description #f ;"annotation"
-  #:attributes {parsed}
-  (pattern (~describe "\"True\" annotation"
-                      ("True" ~!))
-           #:attr parsed (atomic-ann #t))
-  (pattern (~describe "\"False\" annotation"
-                      ("False" ~!))
-           #:attr parsed (atomic-ann #f))
-  (pattern (~describe "\"None\" annotation"
-                      ("None" ~!))
-           #:attr parsed (atomic-ann 'None))
-  (pattern (~or* (~describe "string annotation"
-                            ("string" ~! it:str))
-                 (~describe "number annotation"
-                            ("number" ~! it:number)))
-           #:attr parsed (atomic-ann (syntax->datum #'it)))
-  (pattern (~describe "other annotation"
-                      ("other" ~! it:str))
-           #:attr parsed (other-ann (syntax->datum #'it)))
-  (pattern (~describe "class annotation"
-                      ("class" ~! (~full-value-name-jsexpr name)))
-           #:attr parsed (class-ann name))
-  (pattern (~describe "function annotation"
-                      ("function" ~! (~full-value-name-jsexpr name)))
-           #:attr parsed (function-ann name))
-  (pattern (~describe "named annotation use"
-                      ("named-annotation"
-                       ~!
-                       (~full-value-name-jsexpr name)))
-           #:attr parsed (named-ann name))
-  ;; The rest are recursive
-  (pattern (~describe "annotation-constructor annotation"
-                      ("annotation-constructor"
-                       ~!
-                       (~full-value-name-jsexpr
-                        name
-                        [args (args:annotation ...)])))
-           #:attr parsed
-           (constructor-ann name (attribute args.parsed)))
-  (pattern (~describe "dictionary annotation"
-                      ("dict" ~! ([keys:annotation
-                                   vals:annotation]
-                                  ...)))
-           #:attr parsed
-           (dict-ann (map cons
-                          (attribute keys.parsed)
-                          (attribute vals.parsed))))
-  (pattern (~describe "list annotation"
-                      ("list" ~! (content:annotation ...)))
-           #:attr parsed
-           (list-ann (attribute content.parsed)))
-  (pattern (~describe "tuple annotation"
-                      ("tuple" ~! (content:annotation ...)))
-           #:attr parsed
-           (tuple-ann (attribute content.parsed)))
-  #|END annotation|#)
-
-
-(define-syntax-class maybe-annotation
-  #:description "annotation or #f"
-  #:attributes {parsed}
-  (pattern #f
-           #:attr parsed (nothing))
-  (pattern ann:annotation
-           #:attr parsed
-           (just (attribute ann.parsed))))
-
-(define-syntax-class maybe-string
-  #:description "string or #f"
-  #:attributes {parsed}
-  (pattern #f
-           #:attr parsed (nothing))
-  (pattern s:str
-           #:attr parsed
-           (just (syntax->datum #'s))))
-
-(define-syntax-class parameter-js
-  #:description "parameter"
-  #:attributes {parsed}
-  (pattern (~hash-object
-            [name formal-name-stx:str]
-            [annotation maybe-ann-jsexpr:maybe-annotation]
-            [kind (~and kind-stx
-                        (~or* "POSITIONAL_ONLY"
-                              "POSITIONAL_OR_KEYWORD"
-                              "VAR_POSITIONAL"
-                              "KEYWORD_ONLY"
-                              "VAR_KEYWORD"
-                              #f))]
-            [default default:maybe-string])
-           #:do [(define kind (syntax->datum #'kind-stx))
-                 (define formal-name (syntax->datum #'formal-name-stx))]
-           #:fail-unless kind
-           "unknown parameter kind (from Python level)"
-           #:attr parsed
-           (parameter-doc formal-name
-                          (attribute maybe-ann-jsexpr.parsed)
-                          (case kind
-                            [("POSITIONAL_ONLY") 'positional-only]
-                            [("POSITIONAL_OR_KEYWORD") 'positional-or-keyword]
-                            [("VAR_POSITIONAL") 'var-positional]
-                            [("KEYWORD_ONLY") 'keyword-only]
-                            [("VAR_KEYWORD") 'var-keyword])
-                          (attribute default.parsed))))
-  
-(define-syntax-class signature-doc-js
-  #:description "signature"
-  #:attributes {parsed}
-  (pattern (~hash-object
-            [parameters (params:parameter-js ...)]
-            [return return:maybe-annotation])
-           #:attr parsed
-           (signature-doc
-            (attribute params.parsed)
-            (attribute return.parsed))))
-
-(define-syntax-class missing-docstring
-  ;#:description 
-  #:attributes {parsed}
-  (pattern #f
-           #:attr parsed (docstring/comment/missing #f)))
-
-(define-syntax-class docstring/comment/missing-js
-  ;#:description 
-  #:attributes {parsed}
-  (pattern m:missing-docstring
-           #:attr parsed (attribute m.parsed))
-  (pattern ("comments" ~! v:str)
-           #:attr parsed
-           (docstring/comment/missing
-            (syntax->datum #'v)))
-  (pattern ("docstring" ~! v:str)
-           #:attr parsed
-           (docstring/comment/missing
-            (docstring
-             (syntax->datum #'v)))))
-
-(define-syntax-class maybe-named-ann-docstring
-  ;#:description 
-  #:attributes {parsed}
-  (pattern m:missing-docstring
-           #:attr parsed (attribute m.parsed))
-  (pattern lit:str
-           #:attr parsed
-           (docstring/comment/missing
-            (docstring
-             (syntax->datum #'lit)))))
-
-(define-syntax-class named-named-annotation-value-js
-  ;#:description 
-  #:attributes {parsed}
-  (pattern ("singleton" ~!)
-           #:attr parsed 'singleton)
-  (pattern ann:annotation
-           #:attr parsed (attribute ann.parsed)))
-
-(define-syntax-class named-annotation-js
-  #:description "named annotation definition"
-  #:attributes {parsed}
-  (pattern (~full-value-name-jsexpr
-            name
-            [value (~hash-object
-                    [name declared-name-str-stx:str]
-                    [docstring doc:maybe-named-ann-docstring]
-                    [value value:named-named-annotation-value-js])])
-
-           #:attr parsed
-           (named-ann-doc (attribute doc.parsed)
-                          name
-                          (string->symbol
-                           (syntax->datum
-                            #'declared-name-str-stx))
-                          (attribute value.parsed))))
-
-(define-syntax ~fun/class-jsexpr
+(define-syntax ~hash-object•fun/class
   (pattern-expander
    (syntax-parser
      [(_ (~alt (~once (~seq #:docstring doc:id))
@@ -292,24 +246,52 @@
                 (attribute sig-pat.parsed)))
          post-pat ...)])))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Outermost classes: function, class, and named annotation
+
+(define-syntax-class named-annotation-js
+  #:description "named annotation definition"
+  #:attributes {parsed}
+  (pattern (~hash-object•full-value-name
+            name
+            [value (~hash-object
+                    [name declared-name-str-stx:str]
+                    [docstring pre-doc:maybe-string]
+                    [value value:named-annotation-value/singleton-js])])
+           #:attr parsed
+           (named-ann-doc (docstring/comment/missing
+                           (let ([x (attribute pre-doc.parsed)])
+                             (and x
+                                  (docstring x))))
+                          name
+                          (string->symbol
+                           (syntax->datum
+                            #'declared-name-str-stx))
+                          (attribute value.parsed))))
+
+
 (define-syntax-class function-js
   #:description "function"
   #:attributes {parsed}
-  (pattern (~fun/class-jsexpr
+  (pattern (~hash-object•fun/class
             #:docstring docstring
             #:local-name local-name
             #:signature signature
             [ispredicate (~and pred (~or* #t #f))])
            #:attr parsed
-           (function-doc docstring
-                         local-name
-                         signature
-                         (syntax->datum #'pred))))
+           ((if (syntax->datum #'pred)
+                predicate-doc
+                function-doc)
+            docstring
+            local-name
+            signature)))
+
 
 (define-syntax-class class-js
   #:description "class"
   #:attributes {parsed}
-  (pattern (~fun/class-jsexpr
+  (pattern (~hash-object•fun/class
             #:docstring docstring
             #:local-name local-name
             #:signature signature
@@ -319,62 +301,173 @@
                          #f)
                    raw-is-ann)])
            #:attr parsed
-           (class-doc docstring
-                      local-name
-                      signature
-                      (let ([ann-datum (syntax->datum #'raw-is-ann)])
-                        (and ann-datum
-                             (string->symbol ann-datum))))))
+           (let ([ann-datum (syntax->datum #'raw-is-ann)])
+             (cond
+               [ann-datum
+                (annotation-class-doc docstring
+                                      local-name
+                                      signature
+                                      (string->symbol ann-datum))]
+               [else
+                (class-doc docstring
+                           local-name
+                           signature)]))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Signature and parameter
 
-(define (jsexpr->modpath-doc arg)
-  (syntax-parse (datum->syntax #f arg)
-    #:context 'jsexpr->modpath-doc
-    [(mod:modpath #f)
-     (modpath-doc (attribute mod.parsed) #f)]
-    [(mod:modpath "ErrorDuringImport")
-     (modpath-doc (attribute mod.parsed) 
-                  'ErrorDuringImport)]
-    [(mod:modpath
-      (~hash-object
-       [text intro:docstring/comment/missing-js]
-       [functions (funcs:function-js ...)]
-       [classes (classes:class-js ...)]
-       [named-annotations (n-a*:named-annotation-js ...)]))
-     (match-let
-         ([(app^ (partition-by (private? function-doc-local-name))
-                 (app^ (partition-by function-doc-is-predicate?)
-                       private-predicates
-                       private-functions)
-                 (app^ (partition-by function-doc-is-predicate?)
-                       public-predicates
-                       public-functions))
-           (attribute funcs.parsed)]
-          [(app^ (partition-by (private? named-ann-doc-declared-name))
-                 private-named-annotations
-                 public-named-annotations)
-           (attribute n-a*.parsed)]
-          [(app^ (partition-by (private? class-doc-local-name))
-                 (app^ (partition-by class-doc-is-annotation-class?)
-                       private-annotation-classes
-                       private-classes)
-                 (app^ (partition-by class-doc-is-annotation-class?)
-                       public-annotation-classes
-                       public-classes))
-           (attribute classes.parsed)])
-       (modpath-doc
-        (attribute mod.parsed)
-        (module-doc
-         (attribute intro.parsed)
-         (module-section public-classes
-                         public-annotation-classes
-                         public-functions
-                         public-predicates
-                         public-named-annotations)
-         (module-section private-classes
-                         private-annotation-classes
-                         private-functions
-                         private-predicates
-                         private-named-annotations))))]))
-         
+(define-syntax-class signature-doc-js
+  #:description "signature"
+  #:attributes {parsed}
+  (pattern (~hash-object
+            [parameters (params:parameter-js ...)]
+            [return return:maybe-annotation])
+           #:attr parsed
+           (doc-signature
+            (attribute params.parsed)
+            (attribute return.parsed))))
+
+(define-syntax-class parameter-js
+  #:description "parameter"
+  #:attributes {parsed}
+  (pattern (~hash-object
+            [name formal-name-stx:str]
+            [annotation maybe-ann-jsexpr:maybe-annotation]
+            [kind (~and kind-stx
+                        (~or* "POSITIONAL_ONLY"
+                              "POSITIONAL_OR_KEYWORD"
+                              "VAR_POSITIONAL"
+                              "KEYWORD_ONLY"
+                              "VAR_KEYWORD"
+                              #f))]
+            [default default:maybe-string])
+           #:do [(define kind (syntax->datum #'kind-stx))
+                 (define formal-name (syntax->datum #'formal-name-stx))]
+           #:fail-unless kind
+           "unknown parameter kind (from Python level)"
+           #:attr parsed
+           (doc-parameter formal-name
+                          (attribute maybe-ann-jsexpr.parsed)
+                          (case kind
+                            [("POSITIONAL_ONLY") 'positional-only]
+                            [("POSITIONAL_OR_KEYWORD") 'positional-or-keyword]
+                            [("VAR_POSITIONAL") 'var-positional]
+                            [("KEYWORD_ONLY") 'keyword-only]
+                            [("VAR_KEYWORD") 'var-keyword])
+                          (attribute default.parsed))))
+  
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Annotation
+
+(define-syntax-class annotation
+  #:description #f ;"annotation"
+  #:attributes {parsed}
+  (pattern (~describe "\"True\" annotation"
+                      ("True" ~!))
+           #:attr parsed (atomic-ann #t))
+  (pattern (~describe "\"False\" annotation"
+                      ("False" ~!))
+           #:attr parsed (atomic-ann #f))
+  (pattern (~describe "\"None\" annotation"
+                      ("None" ~!))
+           #:attr parsed (atomic-ann 'None))
+  (pattern (~or* (~describe "string annotation"
+                            ("string" ~! it:str))
+                 (~describe "number annotation"
+                            ("number" ~! it:number)))
+           #:attr parsed (atomic-ann (syntax->datum #'it)))
+  (pattern (~describe "other annotation"
+                      ("other" ~! it:str))
+           #:attr parsed (other-ann (syntax->datum #'it)))
+  (pattern (~describe "class annotation"
+                      ("class" ~! (~hash-object•full-value-name name)))
+           #:attr parsed (class-ann name))
+  (pattern (~describe "function annotation"
+                      ("function" ~! (~hash-object•full-value-name name)))
+           #:attr parsed (function-ann name))
+  (pattern (~describe "named annotation use"
+                      ("named-annotation"
+                       ~!
+                       (~hash-object•full-value-name name)))
+           #:attr parsed (named-ann name))
+  ;; The rest are recursive
+  (pattern (~describe "annotation-constructor annotation"
+                      ("annotation-constructor"
+                       ~!
+                       (~hash-object•full-value-name
+                        name
+                        [args (args:annotation ...)])))
+           #:attr parsed
+           (constructor-ann name (attribute args.parsed)))
+  (pattern (~describe "dictionary annotation"
+                      ("dict" ~! ([keys:annotation
+                                   vals:annotation]
+                                  ...)))
+           #:attr parsed
+           (dict-ann (map cons
+                          (attribute keys.parsed)
+                          (attribute vals.parsed))))
+  (pattern (~describe "list annotation"
+                      ("list" ~! (content:annotation ...)))
+           #:attr parsed
+           (list-ann (attribute content.parsed)))
+  (pattern (~describe "tuple annotation"
+                      ("tuple" ~! (content:annotation ...)))
+           #:attr parsed
+           (tuple-ann (attribute content.parsed)))
+  #|END annotation|#)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Small helpers
+
+(define-syntax-class modpath
+  #:description #f
+  #:attributes {parsed}
+  (pattern mod:str
+           #:attr parsed
+           (string->full-mod-name (syntax->datum #'mod))))
+
+(define-syntax-class docstring/comment/missing-js
+  ;#:description 
+  #:attributes {parsed}
+  (pattern #f
+           #:attr parsed (docstring/comment/missing #f))
+  (pattern ("comments" ~! v:str)
+           #:attr parsed
+           (docstring/comment/missing
+            (syntax->datum #'v)))
+  (pattern ("docstring" ~! v:str)
+           #:attr parsed
+           (docstring/comment/missing
+            (docstring
+             (syntax->datum #'v)))))
+
+(define-syntax-class named-annotation-value/singleton-js
+  ;#:description 
+  #:attributes {parsed}
+  (pattern ("singleton" ~!)
+           #:attr parsed 'singleton)
+  (pattern ann:annotation
+           #:attr parsed (attribute ann.parsed)))
+
+(define-syntax-class maybe-annotation
+  #:description "annotation or #f"
+  #:attributes {parsed}
+  (pattern #f
+           #:attr parsed #f)
+  (pattern ann:annotation
+           #:attr parsed (attribute ann.parsed)))
+
+(define-syntax-class maybe-string
+  #:description "string or #f"
+  #:attributes {parsed}
+  (pattern #f
+           #:attr parsed #f)
+  (pattern s:str
+           #:attr parsed
+           (syntax->datum #'s)))
+
   
