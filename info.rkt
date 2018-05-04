@@ -3,7 +3,7 @@
 (define collection "pydrnlp")
 
 (define deps '("base"
-               ("adjutor" #:version "0.2.1")
+               ("adjutor" #:version "0.2.2")
                "math-lib"
                "pict-lib"
                "srfi-lite-lib"
@@ -20,7 +20,11 @@
                        )))
 
 (define compile-omit-paths '("py/condaenv/"
+                             "py/pydrnlp/"
                              ))
+
+(define install-collection
+  "conda.rkt")
 
 (define pkg-desc "Racket interface to Python NLP library for Digital Ricoeur")
 

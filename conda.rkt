@@ -3,6 +3,13 @@
 (require racket/runtime-path
          openssl/md5
          setup/path-to-relative
+         adjutor
+         )
+
+(provide py-dir
+         python3
+         conda-environment-variables
+         installer
          )
 
 (define init-env
@@ -36,6 +43,33 @@
          (and (or (file-exists? pth)
                   (link-exists? pth))
               pth))))
+
+(define conda-env
+  (environment-variables-set*
+   init-env
+   #"CONDA_DEFAULT_ENV" (path->bytes condaenv-dir)
+   #"CONDA_PREFIX" (path->bytes condaenv-dir)
+   #"CONDA_EXE" (path->bytes conda)
+   #"CONDA_PYTHON_EXE" (if conda-python-exe
+                           (path->bytes conda-python-exe)
+                           (environment-variables-ref init-env
+                                                      #"CONDA_PYTHON_EXE"))
+   #"CONDA_SHLVL" #"1"
+   #"PATH" (bytes-append (path->bytes condaenv-bin)
+                         #":"
+                         (or (environment-variables-ref init-env #"PATH")
+                             #""))
+   ;; see http://click.pocoo.org/5/python3/#python-3-surrogate-handling
+   ;; Apparently Mac OS doesn't set locale for GUI programs.
+   #"LANG" (or (environment-variables-ref init-env #"LANG")
+               #"en_US.UTF-8")))
+
+(define python3
+  (parameterize ([current-environment-variables conda-env])
+    (find-executable-path "python3")))
+
+(define (conda-environment-variables)
+  (environment-variables-copy conda-env))
 
 (define (update-conda-environment)
   (parameterize ([current-directory py-dir]
@@ -80,3 +114,24 @@
           verb
           (path->relative-string/library condaenv-dir #:cache cache)
           (path->relative-string/library environment.yml #:cache cache)))
+
+(define (check-conda)
+  (printf "Checking conda configuration ...\n")
+  (unless conda
+    (error 'pydrnlp
+           "no conda executable found"))
+  (unless conda-python-exe
+    (match-define-values {dir _ _}
+      (split-path conda))
+    (eprintf "~a;\n ~a\n  conda \"/bin/\": ~e\n"
+             "WARNING: pydrnlp: no \"python\" executable in conda \"/bin/\""
+             "check your \"CONDA_PYTHON_EXE\" environment variable"
+             dir))
+  (update-conda-environment))
+
+(define (installer a b c d)
+  (check-conda))
+
+
+
+             

@@ -1,8 +1,8 @@
 #lang racket
 
-(require racket/runtime-path
-         net/url
+(require net/url
          adjutor
+         "conda.rkt"
          (for-syntax syntax/parse
                      ))
 
@@ -20,13 +20,12 @@
            (-> url?)]
           [flask-port 
            (parameter/c ip-port-num/c)]
-          [environment-variables-set*
-           ;; maybe to adjutor?
-           (->* {environment-variables?}
-                #:rest environment-variables-args/c
-                environment-variables?)]
           ))
-            
+
+(define flask-env
+  (environment-variables-set*
+   (conda-environment-variables)
+   #"FLASK_APP" #"pydrnlp.restful"))            
 
 (define flask-quiet?
   (make-parameter #t any->boolean))
@@ -41,64 +40,6 @@
   (make-derived-parameter flask-root-url
                           make-root-url
                           url-port))
-
-(define init-env
-  (current-environment-variables))
-
-(define-runtime-path py-dir
-  "py")
-
-(define condaenv-dir
-  (build-path py-dir "condaenv"))
-
-(define condaenv-bin
-  (build-path condaenv-dir "bin"))
-
-(define environment-variables-args/c
-  (flat-rec-contract environment-variables-args/c
-    (list)
-    (cons/c bytes-environment-variable-name?
-            (cons/c (or/c bytes-no-nuls? #f)
-                    environment-variables-args/c))))
-
-(define/contract (environment-variables-set* env . args)
-  (->* {environment-variables?}
-       #:rest environment-variables-args/c
-       environment-variables?)
-  (let ([env (environment-variables-copy env)])
-    (let loop ([args args])
-      (match args
-        [(list-rest k v args)
-         (environment-variables-set! env k v)
-         (loop args)]
-        ['()
-         env]))))
-
-(define conda-env
-  (environment-variables-set*
-   init-env
-   #"CONDA_DEFAULT_ENV" (path->bytes condaenv-dir)
-   #"CONDA_PREFIX" (path->bytes condaenv-dir)
-   #"CONDA_PYTHON_EXE" #"/usr/local/miniconda3/bin/python" ;;;
-   #"CONDA_EXE" #"/usr/local/miniconda3/bin/conda" ;;;
-   #"CONDA_SHLVL" #"1"
-   #"PATH" (bytes-append (path->bytes condaenv-bin)
-                         #":"
-                         (or (environment-variables-ref init-env #"PATH")
-                             #""))
-   ;; see http://click.pocoo.org/5/python3/#python-3-surrogate-handling
-   ;; Apparently Mac OS doesn't set locale for GUI programs.
-   #"LANG" (or (environment-variables-ref init-env #"LANG")
-               #"en_US.UTF-8")))
-
-(define python3
-  (parameterize ([current-environment-variables conda-env])
-    (find-executable-path "python3")))
-
-(define flask-env
-  (environment-variables-set*
-   conda-env
-   #"FLASK_APP" #"pydrnlp.restful"))
 
 (define (start-server-process)
   (match-define (list _ _ pid _ control)

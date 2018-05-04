@@ -32,15 +32,17 @@ The initial goal is to support the NLP functionality needed
 to implement our own versions of the widgets that
 Digital Ricoeur currently gets from Voyant.
 
+To use the Python functionality, you must have a @exec{conda}
+executable in your PATH for the Conda package manager.
+The recommended way to obtain this is by installing the
+@hyperlink["https://conda.io/miniconda.html"]{Miniconda}
+distribution, though the larger Anaconda distribution
+should work as well.
+As long as you have @exec{conda} installed, Racket will automatically
+take care of the details of creating or updating the
+virtual environment and managing Python dependencies.
 
 @;{
- The Python code is in `py/pydrnlp/`.
- A Conda environment is expected at `py/condaenv/` based on
- the specification at `py/requirements.yaml`.
- In the future, it would be good to have Racket set
- this up automatically.
- I am trying Conda for now because it provides `spaCy`
- pre-built, but I haven't ruled out using venv.
     
  The directory `py/compare-env-vars/` contains Racket
  scripts and data that were used interactively

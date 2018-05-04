@@ -1,5 +1,5 @@
 # The conda environment should generally be managed by raco setup.
-# For manual use: 
+# For manual use:
 #   conda env create --file environment.yml --prefix condaenv
 #   conda env update --file environment.yml --prefix condaenv
 name: pydrnlp
