@@ -3,6 +3,7 @@
 (require json
          syntax/parse
          adjutor
+         data/maybe
          "../adt/pass0.rkt"
          (for-syntax syntax/parse
                      ))
@@ -224,7 +225,7 @@
             name
             [value (~hash-object
                     [name declared-name-str-stx:str]
-                    [docstring pre-doc:maybe-string]
+                    [docstring pre-doc:string-or-false]
                     [value value:named-annotation-value/singleton-js])])
            #:attr parsed
            (named-ann-doc (docstring/comment/missing
@@ -308,7 +309,7 @@
                               "KEYWORD_ONLY"
                               "VAR_KEYWORD"
                               #f))]
-            [default default:maybe-string])
+            [default default:string-or-false])
            #:do [(define kind (syntax->datum #'kind-stx))
                  (define formal-name (syntax->datum #'formal-name-stx))]
            #:fail-unless kind
@@ -322,7 +323,8 @@
                             [("VAR_POSITIONAL") 'var-positional]
                             [("KEYWORD_ONLY") 'keyword-only]
                             [("VAR_KEYWORD") 'var-keyword])
-                          (attribute default.parsed))))
+                          (false->maybe
+                           (attribute default.parsed)))))
   
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -424,11 +426,11 @@
   #:description "annotation or #f"
   #:attributes {parsed}
   (pattern #f
-           #:attr parsed #f)
+           #:attr parsed (nothing))
   (pattern ann:annotation
-           #:attr parsed (attribute ann.parsed)))
+           #:attr parsed (just (attribute ann.parsed))))
 
-(define-syntax-class maybe-string
+(define-syntax-class string-or-false
   #:description "string or #f"
   #:attributes {parsed}
   (pattern #f

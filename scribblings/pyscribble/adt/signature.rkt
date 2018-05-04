@@ -2,43 +2,42 @@
 
 (require racket/serialize
          racket/contract
+         data/maybe
          "annotation.rkt"
          )
-
-;; TODO: use maybe if unsafe-require/typed is ok
-;; (or if you give up on the whole types thing)
 
 (provide (contract-out
           [struct doc-signature
             ([parameters (listof doc-parameter?)]
-             [return (or/c #f annotation?)])]
+             [return (maybe/c annotation?)])]
           [struct doc-parameter
             ([formal-name string?]
-             [annotation (or/c #f annotation?)]
+             [annotation (maybe/c annotation?)]
              [kind (or/c 'positional-only
-                                  'positional-or-keyword
-                                  'var-positional
-                                  'keyword-only
-                                  'var-keyword)]
-             [default (or/c #f string?)])]
+                         'positional-or-keyword
+                         'var-positional
+                         'keyword-only
+                         'var-keyword)]
+             [default (maybe/c string?)])]
           ))
 
 (module* typed typed/racket/base
-  (require (submod "annotation.rkt" typed))
+  (require (submod "annotation.rkt" typed)
+           "typed-maybe.rkt")
   (require/typed/provide
    (submod "..")
    [#:struct doc-signature
     ([parameters : (Listof doc-parameter)]
-     [return : (U #f Annotation)])]
+     [return : (Maybe Annotation)])]
    [#:struct doc-parameter
     ([formal-name : String]
-                       [annotation : (U #f Annotation)]
-                       [kind : (U 'positional-only
-                                  'positional-or-keyword
-                                  'var-positional
-                                  'keyword-only
-                                  'var-keyword)]
-                       [default : (U #f String)])]
+     [annotation : (Maybe Annotation)]
+     [kind : (U 'positional-only
+                'positional-or-keyword
+                'var-positional
+                'keyword-only
+                'var-keyword)]
+     [default : (Maybe String)])]
    #|END module* typed|#))
 
 
