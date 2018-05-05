@@ -49,14 +49,14 @@
    init-env
    #"CONDA_DEFAULT_ENV" (path->bytes condaenv-dir)
    #"CONDA_PREFIX" (path->bytes condaenv-dir)
-   #"CONDA_EXE" (path->bytes conda)
+   #"CONDA_EXE" (and conda (path->bytes conda))
    #"CONDA_PYTHON_EXE" (if conda-python-exe
                            (path->bytes conda-python-exe)
                            (environment-variables-ref init-env
                                                       #"CONDA_PYTHON_EXE"))
    #"CONDA_SHLVL" #"1"
    #"PATH" (bytes-append (path->bytes condaenv-bin)
-                         #":"
+                         #":" ;; is this correct on Windows ???
                          (or (environment-variables-ref init-env #"PATH")
                              #""))
    ;; see http://click.pocoo.org/5/python3/#python-3-surrogate-handling

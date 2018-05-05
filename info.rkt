@@ -12,6 +12,9 @@
 (define build-deps '("scribble-lib"
                      "racket-doc"
                      "rackunit-lib"
+                     "at-exp-lib"
+                     "functional-lib"
+                     "typed-racket-lib"
                      ))
 
 (define scribblings '(("scribblings/pydrnlp.scrbl"

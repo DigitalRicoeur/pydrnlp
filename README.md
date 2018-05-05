@@ -16,7 +16,7 @@ Digital Ricoeur currently gets from Voyant.
 The Python portion of this repository is in the `py` directory,
 particularly the `py/pydrnlp/` directory.
 It is built on the `spaCy` NLP library.
-A `conda` executable (e.g. from MiniConda) must be in your PATH,
+A `conda` executable (e.g. from Miniconda) must be in your PATH,
 but Racket takes care of creating and updating the virtual
 environment as needed.
 
