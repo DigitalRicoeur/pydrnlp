@@ -1,143 +1,107 @@
 #lang typed/racket
 
-(require adjutor
-         typed/pict
-         "quadtree.rkt"
+;; The Placed-Pict abstract datatype encapsulates:
+;;  - a pict;
+;;  - its placement on a Cartesian plane;
+;;  - its overall size; and
+;;  - the rectangle(s) within it that are considered "full".
+;; The constructor is private to preserve invariants.
+;; Right now the whole pict is considered "full", but
+;; this could support finer-grained hierarchial bounding boxes
+;; in the future.
+
+(provide placed-pict?
+         placed-pict-pict
+         placed-pict-bounds
+         placed-pict-filled
+         (rename-out [placed-pict* placed-pict])
+         Placed-Pict
+         placed-pict-area
+         placed-pict-width
+         placed-pict-height
+         pict->placed
+         placed-pict-adjust-origin
+         rotate-placed-pict
+         overlay-placed
          )
 
-(provide make-cloud
-         (struct-out placed-pict)
-         (struct-out quasistream)
-         adjust-origin
-         rotate*
-         )
+(require typed/pict
+         "rect.rkt"
+         (for-syntax racket/base
+                     syntax/parse
+                     ))
 
-(struct placed-pict ([p : pict]
-                     [placement : region]
-                     [regions : (Listof region)])
-  ;; The placement defines the border of
-  ;; the pict but is not considered "full".
-  ;; The regions must all be contained within
-  ;; the placement.
+(struct placed-pict ([pict : pict]
+                     [bounds : rect]
+                     [filled : (Listof rect)])
+  ;; The bounds rect defines the border of the
+  ;; pict and its placement w/r/t the origin,
+  ;; but it is not considered "full".
+  ;; The filled rects must all be inside 
+  ;; the bounds rect.
   #:transparent)
 
-(struct quasistream ([first : placed-pict]
-                     [rest : (Promise quasistream)])
-  #:transparent)
+(define-type Placed-Pict placed-pict)
+
+(define-match-expander placed-pict*
+  (syntax-parser
+    [(_ p bounds filled)
+     #'(placed-pict p bounds filled)]))
 
 
-(: adjust-region-origin (-> region Float Float region))
-(define (adjust-region-origin r x-offset y-offset)
-  (match r
-    [(region x0 x1 y0 y1)
-     (region (+ x0 x-offset)
-             (+ x1 x-offset)
-             (+ y0 y-offset)
-             (+ y1 y-offset))]))
+(: placed-pict-area (-> placed-pict Nonnegative-Float))
+(define (placed-pict-area placed)
+  (rect-area (placed-pict-bounds placed)))
 
-(: adjust-origin (-> placed-pict Float Float
-                     placed-pict))
-(define (adjust-origin it x-offset y-offset)
-  (match it
-    [(placed-pict p placement regions)
+(: placed-pict-width (-> placed-pict Nonnegative-Float))
+(define (placed-pict-width placed)
+  (rect-w (placed-pict-bounds placed)))
+
+(: placed-pict-height (-> placed-pict Nonnegative-Float))
+(define (placed-pict-height placed)
+  (rect-h (placed-pict-bounds placed)))
+
+
+(: pict->placed (-> pict placed-pict))
+(define (pict->placed p)
+  (define w
+    (assert (real->double-flonum (pict-width p))
+            nonnegative-float?))
+  (define h
+    (assert (real->double-flonum (pict-height p))
+            nonnegative-float?))
+  (define r
+    (rect 0.0 0.0 w h))
+  (placed-pict p r (list r)))
+
+
+(: placed-pict-adjust-origin (-> placed-pict Float Float placed-pict))
+(define (placed-pict-adjust-origin placed x-offset y-offset)
+  (match placed
+    [(placed-pict p bounds filled)
      (placed-pict p
-                  (adjust-region-origin placement
-                                        x-offset y-offset)
-                  (map (λ ([r : region])
-                         (adjust-region-origin r
-                                               x-offset y-offset))
-                       regions))]))
+                  (rect-adjust-origin bounds x-offset y-offset)
+                  (for/list : (Listof rect) ([r (in-list filled)])
+                    (rect-adjust-origin r x-offset y-offset)))]))
 
-(: rotate* (-> placed-pict placed-pict))
-(define rotate*
-  ;; keep the center the same
+
+(: rotate-placed-pict (-> placed-pict placed-pict))
+(define rotate-placed-pict
   (match-lambda
-    [(placed-pict p placement regions)
+    ;; rotate 90º clockwise, keeping center the same
+    [(placed-pict p bounds filled)
      (placed-pict (rotate p (- (/ pi 2)))
-                  (rotate-region placement)
-                  (map rotate-region regions))]))
+                  (rotate-rect bounds)
+                  (map rotate-rect filled))]))
 
 
-(struct pre-cloud ([picts : (Listof placed-pict)]
-                   [quadtree : Quadtree])
-  #:transparent)
+(: overlay-placed (-> (Listof placed-pict) pict pict))
+(define (overlay-placed lst target)
+  (match lst
+    ['() target]
+    [(cons (placed-pict p (rect x y _ _) _)
+           lst)
+     (overlay-placed lst
+                     (pin-over target x y p))]))
 
-(define empty-pre-cloud
-  (pre-cloud null empty-quadtree))
-
-(: try-place (-> placed-pict pre-cloud (U False pre-cloud)))
-(define (try-place p c)
-  (match-define (pre-cloud picts qt)
-    c)
-  (define regions
-    (placed-pict-regions p))
-  (and (not (for/or : Boolean ([r (in-list regions)])
-              (quadtree-collision? qt r)))
-       (pre-cloud (cons p picts)
-                  (for/fold ([qt qt])
-                            ([r (in-list regions)])
-                    (quadtree-insert qt r)))))
-
-
-(: render-placed (-> (Listof placed-pict) pict))
-(define (render-placed l-placed)
-  (define-values {picts placements}
-    (for/lists ([picts : (Listof pict)]
-                [placements : (Listof region)])
-               ([placed (in-list l-placed)])
-      (match placed
-        [(placed-pict p placement _)
-         (values p placement)])))
-  (let* ([x-offset (- (apply min (map region-x0 placements)))]
-         [y-offset (- (apply min (map region-y0 placements)))]
-         [placements (map (λ ([r : region])
-                            (adjust-region-origin r
-                                                  x-offset
-                                                  y-offset))
-                          placements)]
-         [w (apply max (map region-x1 placements))]
-         [h (apply max (map region-y1 placements))])
-    (for/fold ([target (blank w h)])
-              ([p (in-list picts)]
-               [r (in-list placements)])
-      (match r
-        [(region x0 _ y0 _)
-         (pin-over target x0 y0 p)]))))
-      
-
-(: pict->region (-> pict region))  
-(define (pict->region p)
-  (region 0.0 (real->double-flonum (pict-width p))
-          0.0 (real->double-flonum (pict-height p))))
-
-
-(: make-cloud (->* {(Listof pict)
-                    (-> placed-pict quasistream)}
-                   {#:get-initial-position
-                    (-> placed-pict (values Float Float))}
-                   pict))
-(define (make-cloud picts
-                    placed->quasistream
-                    #:get-initial-position
-                    [get-initial-position
-                     (λ (x) (values 0.0 0.0))])
-  (define l-qs
-    (for/list : (Listof quasistream) ([p (in-list picts)])
-      (define r
-        (pict->region p))
-      (define placed
-        (placed-pict p r (list r)))
-      (define-values {x-offset y-offset}
-        (get-initial-position placed))
-      (placed->quasistream
-       (adjust-origin placed x-offset y-offset))))
-  (render-placed
-   (pre-cloud-picts
-    (for/fold : pre-cloud
-      ([cloud empty-pre-cloud])
-      ([qs (in-list l-qs)])
-      (let loop : pre-cloud ([qs qs])
-        (match-define (quasistream placed rest)
-          qs)
-        (or (try-place placed cloud)
-            (loop (force rest))))))))
+     
