@@ -18,7 +18,7 @@ to standard out and exits with a non-zero exit code.
 
 import json
 import sys
-from pydrnlp.segtokenize import tokenizerRevision, tokenizeDocList
+from pydrnlp.segtokenize import tokenizerRevision, tokenizeSegmentList
 
 
 if __name__ == "__main__":
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         badUsage()
     elif (sys.argv[1] == "tokenize"):
         jsIn = json.load(sys.stdin)
-        dumpln(tokenizeDocList(jsIn))
+        dumpln(tokenizeSegmentList(jsIn))
     elif (sys.argv[1] == "tokenizer-revision"):
         dumpln(tokenizerRevision())
     else:

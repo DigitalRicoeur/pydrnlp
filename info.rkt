@@ -7,6 +7,9 @@
                "math-lib"
                "pict-lib"
                "srfi-lite-lib"
+               "draw-lib"
+               "typed-racket-lib"
+               "typed-racket-more"
                ))
 
 (define build-deps '("scribble-lib"
@@ -14,7 +17,7 @@
                      "rackunit-lib"
                      "at-exp-lib"
                      "functional-lib"
-                     "typed-racket-lib"
+                     "rackunit-typed"
                      ))
 
 (define scribblings '(("scribblings/pydrnlp.scrbl"

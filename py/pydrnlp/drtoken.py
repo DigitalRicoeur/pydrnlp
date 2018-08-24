@@ -2,19 +2,12 @@
 """Functions for filtering out uninteresting tokens.
 """
 
-from spacy.lang.en.stop_words import STOP_WORDS
+from spacy.lang.en.stop_words import STOP_WORDS as STOP_WORDS
+#from spacy.lang.fr.stop_words import STOP_WORDS as fr_STOP_WORDS
 from spacy.tokens import Token
-from pydrnlp.mkdoc import JSON
-from pydrnlp.annotations import ModuleAnnotationNamer, Or, And, Not
 
 
-NamedAnnotation = ModuleAnnotationNamer(__name__)
-RevisionJsexpr = NamedAnnotation(
-    "RevisionJsexpr",
-    And(JSON, Not(False)))
-
-
-def tokenFilterRevision() -> RevisionJsexpr:
+def tokenFilterRevision() -> "RevisionJsexpr":
     return 0
 
     
@@ -59,14 +52,17 @@ def tokenQuicklyFails(token : Token) -> bool:
             boringPOS(token.pos_))
 
 
-# tokenShouldUse : Token -> bool
-def tokenShouldUse(token : Token) -> bool:
-    """Predicate recognizing tokens which should be included in counting.
+# tokenShouldUseWithStopWords : Token STOP_WORDS -> bool
+def tokenShouldUseWithStopWords(token : Token, stop_words : "STOP_WORDS") -> bool:
+    """Recognizes tokens which should be included in counting
+    with respect to the given STOP_WORDS.
 
     In addition to returning False for any token for which
     tokenQuicklyFails would return True,
     also checks for the lemma and lowercase forms of the token
-    in STOP_WORDSspacy.lang.en.stop_words. 
+    in STOP_WORDS, which might come from spacy.lang.en.stop_words
+    or spacy.lang.fr.stop_words.
+
     This is needed because token.is_stop seems to be False
     when the token itself is not a stop word, even if
     a more normalized form might be.
@@ -78,5 +74,12 @@ def tokenShouldUse(token : Token) -> bool:
     to be in STOP_WORDS. Investigate further.
     """
     return not (tokenQuicklyFails(token) or
-                (token.lemma_ in STOP_WORDS) or
-                (token.lower_ in STOP_WORDS))
+                (token.lemma_ in stop_words) or
+                (token.lower_ in stop_words))
+
+# tokenShouldUse : Token -> bool
+def tokenShouldUse(token : Token) -> bool:
+    """Like tokenShouldUseWithStopWords, but allways uses
+    STOP_WORDS from spacy.lang.en.stop_words.
+    """
+    return tokenShouldUseWithStopWords(token, STOP_WORDS)
