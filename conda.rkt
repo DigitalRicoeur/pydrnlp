@@ -1,6 +1,9 @@
-#lang racket
+#lang racket/base
 
 (require racket/runtime-path
+         racket/match
+         racket/file
+         racket/system
          openssl/md5
          setup/path-to-relative
          adjutor
@@ -11,10 +14,6 @@
          conda-environment-variables
          installer
          )
-
-;; TODO: should check exit code on updating conda
-;; so e.g. a network error doesn't cause setup
-;; to be skipped in future
 
 (define init-env
   (current-environment-variables))
@@ -78,19 +77,24 @@
 (define (update-conda-environment)
   (parameterize ([current-directory py-dir]
                  [current-input-port (open-input-string "")])
+    (define (print-abnormal-exit-notice)
+      (eprintf "pydrnlp: conda exited abnormally;\n ~a\n"
+               "you may need to run \"raco setup\" again"))
     (cond
       [(not (directory-exists? condaenv-dir))
        (print-notification)
-       (system* conda #"env" #"create"
-                #"--file" environment.yml
-                #"--prefix" condaenv-dir)
-       (save-environment-file-md5!)]
+       (if (system* conda #"env" #"create"
+                    #"--file" environment.yml
+                    #"--prefix" condaenv-dir)
+           (save-environment-file-md5!)
+           (print-abnormal-exit-notice))]
       [(not (environment-up-to-date?))
        (print-notification "Updating")
-       (system* conda #"env" #"update"
-                #"--file" environment.yml
-                #"--prefix" condaenv-dir)
-       (save-environment-file-md5!)]
+       (if (system* conda #"env" #"update"
+                    #"--file" environment.yml
+                    #"--prefix" condaenv-dir)
+           (save-environment-file-md5!)
+           (print-abnormal-exit-notice))]
       [else
        (void)])))
 
@@ -138,4 +142,3 @@
 
 
 
-             
