@@ -4,6 +4,9 @@ for stop words across multiple languages.
 This module provides the instances drEnglish and drFrench.
 The function get_drLanguage selects the appropriate instance given
 a lanugage string.
+
+Loading language models from SpaCy is slow.
+I should look into doing it lazily.
 """
 
 import spacy
@@ -27,12 +30,28 @@ Lemma = {"lemma": str, "text": str}
 class drLanguage:
     """Encapsulates tokenization and filtering tokens
     for stop words across multiple languages.
-    
+
     The public method is tokenize.
     """
-    def __init__(self, nlp, stop_words):
-        self.__nlp = nlp
+    def __init__(self, nlpThunk, stop_words):
+        self.__nlpForced = False
+        self.__nlpThunk = nlpThunk
         self.__stop_words = stop_words
+    # _forceNLP : self -> nlp
+    # I wish I could force this in the background
+    # while waiting for IO.
+    def _forceNLP(self):
+        forced = self.__nlpForced
+        if forced:
+            return forced
+        else:
+            nlp = self.__nlpThunk()
+            self.__nlpForced = nlp
+            return nlp
+    # _doNLP : self str -> IteratorOf(Token)
+    def _doNLP(self, s : str) -> "IteratorOf(Token)":
+        nlp = self._forceNLP()
+        return nlp(s)
     # _tokenShouldUse : self Token -> bool
     def _tokenShouldUse(self, token : Token) -> bool:
         return tokenShouldUseWithStopWords(token, self.__stop_words)
@@ -61,28 +80,28 @@ class drLanguage:
     def tokenize(self, body : str) -> "ListOf(Lemma)":
         """Tokenizes a string into a list of JSON-convertable Lemma dictionaries.
         """
-        doc = self.__nlp(body)
+        doc = self._doNLP(body)
         return list(self._tokenizedPassageToLemmas(doc))
 
-        
+
 # Could a custom pipeline do less work faster?
 # Also, is garbage an issue?
-_en_nlp = spacy.load('en_core_web_sm', disable=['parser','ner'])
-_fr_nlp = spacy.load('fr_core_news_sm', disable=['parser','ner'])
+_en_nlpThunk = lambda: spacy.load('en_core_web_sm', disable=['parser','ner'])
+_fr_nlpThunk = lambda: spacy.load('fr_core_news_sm', disable=['parser','ner'])
 
 
-drEnglish = drLanguage(_en_nlp, _en_stop_words)
+drEnglish = drLanguage(_en_nlpThunk, _en_stop_words)
 
-drFrench = drLanguage(_fr_nlp, _fr_stop_words)
+drFrench = drLanguage(_fr_nlpThunk, _fr_stop_words)
 
 
 # get_drLanguage : str -> drLanguage
 def get_drLanguage(s : str) -> drLanguage:
-    """Returns the drLanguage instance specified by the 
+    """Returns the drLanguage instance specified by the
     given string.
     """
     if "en" == s:
         return drEnglish
     elif "fr" == s:
         return drFrench
-    # else do some useful error 
+    # else do some useful error
