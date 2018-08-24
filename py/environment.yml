@@ -8,7 +8,6 @@ channels:
 dependencies:
   - python=3.6.5
   - spacy=2.0.11
-  - flask=0.12.2
   - pip=9.0.3
   - pip:
     - https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-2.0.0/en_core_web_sm-2.0.0.tar.gz#en_core_web_sm#egg=en-core-web-sm

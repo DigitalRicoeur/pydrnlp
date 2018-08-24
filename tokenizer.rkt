@@ -86,9 +86,19 @@
 (define tokenizer-env
   (conda-environment-variables))
 
+(define orig-cust
+  (current-custodian))
+
 (define (launch-tokenizer #:quiet? [quiet? #t])
   (define cust
     (make-custodian))
+  (define bx
+    (box 'new))
+  (thread-resume
+   (thread (λ ()
+             (sync (make-custodian-box cust 'live))
+             (set! bx 'shut-down)))
+   orig-cust)
   (parameterize ([current-custodian cust])
     (match-define (list in-from-py out-to-py pid _ control)
       (parameterize ([current-subprocess-custodian-mode 'kill]
@@ -124,7 +134,7 @@
     (tokenizer revision
                cust
                (make-semaphore 1)
-               (box 'new)
+               bx
                ch
                promise)))
 
@@ -155,6 +165,9 @@
     promise
     l-args))
 
-(define (tokenizer-kill! t)
-  (custodian-shutdown-all (tokenizer-cust t)))
+(define tokenizer-kill!
+  (match-lambda
+    [(tokenizer _ cust _ bx _ _)
+     (custodian-shutdown-all cust)
+     (set-box! bx 'killed)]))
 

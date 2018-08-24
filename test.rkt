@@ -1,6 +1,6 @@
 #lang _-exp racket
 
-(require pydrnlp/tokenizer)
+(require pydrnlp)
 
 (define args
   (list (tokenize-arg 'en 1 ƒstring-append{
@@ -32,13 +32,6 @@ Et conter propos gracieux
 Ne fait maintenant que maudire
 Ceux qui m'ont banni de vos yeux.
  })))
-
-#|(define py
-  (basic-pydrnlp #:quiet? #f))
-
-(pydrnlp-tokenize py args)
-
-(pydrnlp-kill py)|#
 
 (define t
   (launch-tokenizer))

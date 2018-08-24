@@ -1,5 +1,18 @@
 # -*- coding: utf-8 -*-
-"""
+"""A simple interface to pydrnlp.segtokenize based on standard IO.
+
+This module does nothing unless __name__ == "__main__".
+When run, it:
+
+- Immediately writes the JSON result of
+  pydrnlp.segtokenize.tokenizerRevision() to standard out.
+
+- Blocks reading a JSON value from standard in.
+
+- Calls pydrnlp.segtokenize.tokenizeSegmentList() on the
+  input value and writes the JSON result to standard out.
+
+- Exits with a 0 exit code.
 """
 
 import json

@@ -24,17 +24,11 @@ from spacy.lang.en.stop_words import STOP_WORDS
 import json
 import sys
 from pydrnlp.drtoken import tokenQuicklyFails
-from pydrnlp.annotations import IteratorOf
 
 nlp = spacy.load('en_core_web_sm', disable=['parser','ner'])
 
 
-def getSuspiciousTokens(str : str) -> IteratorOf(
-        {"text": str,
-         "lemma": str,
-         "pos": str,
-         "lemmaIsStop": bool,
-         "lowerIsStop": bool}):
+def getSuspiciousTokens(str : str):
     """Returns an iterator of values representing suspicious
     tokens in the given string.
 
@@ -50,11 +44,18 @@ def getSuspiciousTokens(str : str) -> IteratorOf(
     spacy.lang.en.stop_words.STOP_WORDS.
     The presence of one of those forms in STOP_WORDS
     suggests that the token should be excluded, ideally
-    by identifying some characteristic that can be more 
+    by identifying some characteristic that can be more
     quickly checked.
 
     Note that getSuspiciousTokens prints progress messages to
     standard output.
+
+    Returns IteratorOf(
+            {"text": str,
+             "lemma": str,
+             "pos": str,
+             "lemmaIsStop": bool,
+             "lowerIsStop": bool})
     """
     print("Tokenizing")
     sys.stdout.flush()
@@ -77,7 +78,7 @@ def getSuspiciousTokens(str : str) -> IteratorOf(
                        "lowerIsStop": lowerIsStop}
 
 
-def readWriteSuspiciousTokens(input : IteratorOf(str),
+def readWriteSuspiciousTokens(input : "IteratorOf(str)",
                               destPath : str) -> None:
     """Calls getSuspiciousTokens on the input strings
     and writes the results to destPath as a JSON array.
@@ -111,11 +112,9 @@ def readWriteSuspiciousTokens(input : IteratorOf(str),
         dest.write("]\n")
         print("\nDone")
 
-                
+
 if __name__ == "__main__":
     if (2 == len(sys.argv)):
         readWriteSuspiciousTokens(sys.stdin.read(), sys.argv[1])
     else:
         exit(1)
-
-        

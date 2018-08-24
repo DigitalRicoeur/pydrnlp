@@ -16,79 +16,50 @@
           args))
 
 @deftogether[
- (@defproc[(pydrnlp? [v any/c]) any/c]
-   @defproc[(pydrnlp-kill [instance pydrnlp?]) any]
-   @defproc[(pydrnlp-dead? [instance pydrnlp?])
-            (or/c #f natural-number/c)]
-   @defproc[(pydrnlp-dead-evt [instance pydrnlp?])
-            (evt/c natural-number/c)])]{
- At the Racket level, the functionality provided from
- the Python layer is accesed via @deftech{pydrnlp instances},
- which are recognized by the @racket[pydrnlp?] predicate.
- Currently the only way to create an instance is via
- @racket[basic-pydrnlp], but other types of instances may be
- added in the future.
-
- Constructing a @tech{pydrnlp instance} typically allocates
- some system-level resources (such as a Python process)
- that must be released, either by calling @racket[pydrnlp-kill]
- or by shutting down its controlling @rkttech{custodian}.
- For an @deftech{instance} which has been shut down,
- @racket[pydrnlp-dead?] responds with the exit code of the
- Python process (so @racket[0] means success):
- such an instance is said to be @deftech{dead}.
- An instance can also become dead without having been 
- explicitly shut down (for example, if the underlying
- process exited for some other reason).
- Using @racket[pydrnlp-dead-evt] returns a
- @rkttech{synchronizable event} that becomes ready when
- the instance has become dead.
- The synchronization result of the event is the exit code
- that would have been returned by @racket[pydrnlp-dead?].
-
- Importantly, synchronizable events awaiting the results
- of computations from the Python layer @bold{do not} become
- ready when a @tech{pydrnlp instance} becomes @tech{dead},
- nor do functions that request such results raise exceptions
- when applied to dead instances.
- Clients can implement such functionality when desired
- using Racket's synchronization primitives.
+ (@defproc[(launch-tokenizer [#:quiet? quiet? any/c #t])
+           tokenizer?]
+   @defproc[(tokenizer? [v any/c])
+            boolean?])]{
+ A @deftech{tokenizer instance} encapsulates a Python process
+ for performing @tech{tokenization}.
+ Tokenizer instances are stateful:
+ each instance supports at most one call
+ to @racket[tokenizer-tokenize!].
+ 
+ System-level resources encapsulated by the
+ @tech{tokenizer instance} are placed in the custody of
+ the @racket[current-custodian].
+ Tokenization can be interrupted if the custodian
+ is shut down, or alternatively if
+ the tokenizer instance is explicitly terminated
+ with @racket[tokenizer-kill!].
+ 
+ When a @tech{tokenizer instance} has been created
+ that will not be used with @racket[tokenizer-tokenize!],
+ one of these mechanisms must be used to free
+ the system-level resources.
 }
 
-
-@deftogether[
- (@defproc[(basic-pydrnlp [#:port port ip-port-num/c (flask-port)]
-                          [#:quiet? quiet? any/c (flask-quiet?)])
-           (and/c basic-pydrnlp?
-                  pydrnlp?)]
-   @defproc[(basic-pydrnlp? [v any/c]) any/c]
-   @defparam[flask-port port ip-port-num/c #:value 5005]
-   @defboolparam[flask-quiet? quiet? #:value #t])]{
- Constructs a @tech{pydrnlp instance} which communicates with
- Python by launching Flask's development webserver
- (which does not support concurrency, among other limitations).
- Whether specified via parameters or keyword arguments,
- the @racket[port] value specifies the port on which the
- Flask server runs and the @racket[quiet?] value determines
- whether Flask is allowed to write to
- @racket[current-output-port] and @racket[current-error-port].
+@defproc[(tokenizer-revision [t tokenizer?])
+         jsexpr?]{
+ Returns a JSON-convertable value representing the
+ tokenization implementation used by the
+ @tech{tokenizer instance} @racket[t].
+ 
+ Tokenization is a fairly expensive operation:
+ the purpose of @racket[tokenizer-revision] is to
+ support caching.
+ If two @tech{tokenizer instances} return @racket[equal?]
+ values from @racket[tokenizer-revision],
+ they are guaranteed to be equivalent in terms of
+ @racket[tokenizer-tokenize!], even across multiple
+ runs of a program.
 }
 
-
-
-
-
-
-
-
-
-
-@section{Tokenization}
-
 @deftogether[
- (@defproc[(pydrnlp-tokenize-evt [instance pydrnlp?]
-                                 [segments (listof tokenize-arg?)])
-           (evt/c (promise/c (listof tokenize-result?)))]
+ (@defproc[(tokenizer-tokenize! [t tokenizer?]
+                                [args (listof tokenize-arg?)])
+           (promise/c (listof tokenize-result?))]
    @defstruct*[tokenize-arg
                ([lang (or/c 'en 'fr)]
                 [key jsexpr?]
@@ -99,88 +70,76 @@
    @defstruct*[token
                ([lemma symbol?]
                 [text (and/c string? immutable?)])])]{
- The core functionality provided by the Python layer
- is a form of tokenization: splitting some text into @deftech{tokens}
- (words, to a first approximation); identifying the @deftech{lemma},
- or normalized base form, for each token; and counting the number of
- occurences of each lemma in the text.
- The implementation should attempt to ignore lemmas which are
+ The purpose of the Python process encapsulated by a
+ @tech{tokenizer instance} is to perform a a form of
+ @deftech{tokenization}: splitting some text into
+ @deftech{tokens} (words, to a first approximation)
+ and identifying the @deftech{lemma},
+ or normalized base form, for each token.
+ The implementation attempts to ignore lemmas which are
  excessively common and uninteresting (e.g. ``the'').
 
- This functionality is accessed through @racket[pydrnlp-tokenize-evt].
- @;{@;TODO: Update this
- The structure of its @racket[segments] argument is to support sending
- multiple segments at once.
- Its outer hash table represents a collection of documents, where
- each document is identified by a string key. This string is
- mapped to an inner hash table representing the document's collection
- of segments: it maps numbers identifying the segments to strings
- containing their text.
- }
- 
- Calling @racket[pydrnlp-tokenize-evt] produces a
- @rkttech{synchronizable event} that @bold{TODO: think through more
-  specific details}. The event becomes ready for synchronization
- when a result is received from the Python layer. Its synchronization
- result is a promise that, when forced, either raises an exception or
- returns @bold{TODO: document this better}.
- @;{@;TODO: Update this
- returns a hash table mapping each string key that identified a document
- in the @racket[segments] argument to a
- corresponding @racket[tokenized-result] (documented below).
- }
+ This functionality is accessed through
+ @racket[tokenizer-tokenize!].
+ It is called with a list of @racket[tokenize-arg]
+ values. The @racket[tokenize-arg-lang] identifies the
+ language to be used (currently English or French),
+ the @racket[tokenize-arg-text] is the actual text
+ to be tokenized, and the @racket[tokenize-arg-key]
+ is an arbitrary JSON-convertable value that is
+ propigated to the @racket[tokenize-result-key] field
+ of the corresponding @racket[tokenize-result] value.\
+
+ The @racket[token] datastructure includes both the
+ @tech{lemma} (as a symbol, for easy comparison)
+ and an immutable copy of the original string in the
+ @racket[token-text] field.
+ This provides an example of an actual use of the word,
+ which is needed because the lemma is always normalized,
+ but some words (e.g. ``DuFay'') shouldn't be.
+ (Also, some lemmas are strange, like ``whatev''.)
+ Clients will need to implement a heuristic for choosing
+ the best representitive string for each lemma, but
+ that is beyond the scope of @racketmodname[pydrnlp].
+
+ A given @tech{tokenizer instance} can be used with
+ @racket[tokenizer-tokenize!] at most once:
+ any subsequent call will raise an exception.
 }
 
+@defproc[(tokenizer-promise [t tokenizer?])
+         (promise/c (listof tokenize-result?))]{
+ Returns the same promise that @racket[tokenizer-tokenize!]
+ would return.
 
-@defproc[(pydrnlp-tokenizer-revision-evt [instance pydrnlp?])
-         (evt/c (promise/c jsexpr?))]{
- Tokenizing documents with @racket[pydrnlp-tokenize-evt]
- is a fairlt expensive operation: results should likely
- be cached. However, this library remains a work in
- progress: we may improve our implementation over time.
- To support caching, this library guarantees that,
- when two @tech{pydrnlp instances} return @racket[equal?]
- values inside the promise from
- @racket[pydrnlp-tokenizer-revision-evt], those instances
- are interchangable with respect to
- @racket[pydrnlp-tokenize-evt]: @racket[equal?] arguments
- will return @racket[equal?] results, even across multiple
- runs of a program.
-
- Calling @racket[pydrnlp-tokenizer-revision-evt] repeatedly
- on the same @tech{pydrnlp instance} always returns the same
- promise (i.e. it does not send multiple
- messages to the underlying Python process),
- and the event produced by calling
- @racket[pydrnlp-tokenizer-revision-evt] on a @tech{dead}
- instance will eventually become ready for synchronization
- if the value was retreived before the instance became dead.
+ Unlike @racket[tokenizer-tokenize!], @racket[tokenizer-promise]
+ can be called repeatedly and at any time.
+ If the promise is obtained via @racket[tokenizer-promise]
+ before @racket[tokenizer-tokenize!] has been called,
+ forcing the promise will block until @racket[tokenizer-tokenize!]
+ is called or the @tech{tokenizer instance} @racket[t]
+ otherwise becomes unable to compute a value
+ (in which case forcing the promise will raise an exception).
 }
 
-
-@deftogether[
- (@defproc[(pydrnlp-tokenize [instance pydrnlp?]
-                             [segments (listof tokenize-arg?)])
-           (listof tokenize-result?)]
-   @defproc[(pydrnlp-tokenizer-revision [instance pydrnlp?])
-            jsexpr?])]{
- Blocking versions of @racket[pydrnlp-tokenize-evt] and
- @racket[pydrnlp-tokenizer-revision-evt].
+@defproc[(tokenizer-accepting? [t tokenizer?])
+         boolean?]{
+ Returns @racket[#true] if and only if
+ @racket[tokenizer-tokenize!] would not raise
+ an exception when called with @racket[t],
+ which implies that neither
+ @racket[tokenizer-tokenize!] nor @racket[tokenizer-kill!]
+ have ever been called with @racket[t]
+ and that @racket[t]'s controlling custodian has not
+ been shut down.
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+@defproc[(tokenizer-kill! [t tokenizer?])
+         any]{
+Releases the system-level resources assosciated with
+the @tech{tokenizer instance} @racket[t],
+equivalently to shutting down its controlling custodian.
+}
+          
 
 
