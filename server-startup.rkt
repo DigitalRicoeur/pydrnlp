@@ -1,10 +1,13 @@
-#lang racket
+#lang racket/base
 
-(require net/url
+(require net/url-structs
          adjutor
          "conda.rkt"
-         (for-syntax syntax/parse
-                     ))
+         racket/contract
+         racket/match
+         racket/system
+         racket/port
+         )
 
 (provide (contract-out
           [start-server-process

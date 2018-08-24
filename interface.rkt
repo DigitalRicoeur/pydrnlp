@@ -1,11 +1,13 @@
-#lang racket
+#lang racket/base
 
 (require racket/generic
          json
-         "tokenized-result.rkt"
          syntax/parse/define
-         racket/provide-syntax
+         racket/contract
+         racket/match
+         racket/promise
          (for-syntax syntax/parse
+                     racket/base
                      ))
 
 ;; SEE provide at end of file (due to macros)
@@ -13,7 +15,12 @@
 (module+ private
   (provide gen:pydrnlp
            correct-pydrnlp/c
-           ))
+           (contract-out
+            [tokenize-arg->jsexpr
+             (-> tokenize-arg? jsexpr?)]
+            [try-parse-result-jsexpr
+             (-> any/c (or/c #f (listof tokenize-result?)))]
+           )))
 
 (define-generics pydrnlp
   (pydrnlp-dead-evt pydrnlp)
@@ -50,14 +57,66 @@
 (define-blocking pydrnlp-tokenize (to-send)
   pydrnlp-tokenize-evt)
 
+
+
+
+(struct tokenize-arg (lang key text)
+  #:transparent)
+
+(struct tokenize-result (key body)
+  #:transparent)
+
+(struct token (lemma text)
+  #:transparent)
+
+(define tokenize-arg->jsexpr
+  (match-lambda
+    [(tokenize-arg lang key text)
+     (hasheq 'lang (case lang
+                     [(en) "en"]
+                     [(fr) "fr"])
+             'key key
+             'body text)]))
+
+(define try-jsexpr->tokenize-result
+  (match-lambda
+    [(hash-table ['key key]
+                 ['tokenized (list (hash-table
+                                    ['lemma (app string->symbol lemma...)]
+                                    ['text (app datum-intern-literal text...)])
+                                   ...)])
+     (tokenize-result key (map token lemma... text...))]
+    [_
+     #f]))
+
+(define (try-parse-result-jsexpr js)
+  (and (list? js)
+       (let/ec return
+         (for/list ([j (in-list js)])
+           (define rslt
+             (try-jsexpr->tokenize-result j))
+           (unless rslt
+             (return #f))
+           rslt))))
+
 (provide pydrnlp?
          (contract-out
+          [struct tokenize-arg
+            ([lang (or/c 'en 'fr)]
+             [key jsexpr?]
+             [text string?])]
+          [struct tokenize-result
+            ([key jsexpr?]
+             [body (listof token?)])]
+          [struct token
+            ([lemma symbol?]
+             [text (and/c string? immutable?)])]
           [pydrnlp-tokenizer-revision
            (-> pydrnlp?
                jsexpr?)]
           [pydrnlp-tokenize
-           (-> pydrnlp? tokenize-arg/c
-               tokenization-results/c)]
+           (-> pydrnlp? (listof tokenize-arg?)
+               (listof tokenize-result?))]
           ))
 
 (provide/contract+define-generic-contract
@@ -74,8 +133,8 @@
    (-> pydrnlp?
        (evt/c (promise/c jsexpr?)))]
   [pydrnlp-tokenize-evt
-   (-> pydrnlp? tokenize-arg/c
-       (evt/c (promise/c tokenization-results/c)))]
+   (-> pydrnlp? (listof tokenize-arg?)
+       (evt/c (promise/c (listof tokenize-result?))))]
   )
 
 

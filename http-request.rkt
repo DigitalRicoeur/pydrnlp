@@ -1,20 +1,23 @@
-#lang racket
+#lang racket/base
 
 (require net/url
          json
          adjutor
          "server-startup.rkt"
-         "tokenized-result.rkt"
-         (submod "tokenized-result.rkt" private)
+         "interface.rkt"
+         (submod "interface.rkt" private)
          syntax/parse/define
-         )
+         racket/contract
+         racket/promise
+         (for-syntax racket/base
+                     ))
 
 (provide (contract-out
           [do-request/tokenizer-revision
            (-> (promise/c jsexpr?))] ;; more specific?
           [make-do-request/tokenize
-           (-> (-> tokenize-arg/c
-                   (promise/c tokenization-results/c)))]
+           (-> (-> (listof tokenize-arg?)
+                   (promise/c (listof tokenize-result?))))]
           ))
 
 ;; These functions return promises so that exceptions
@@ -46,13 +49,17 @@
       (define-values {status hs body-in}
         (http-sendrecv/url u
                            #:data (jsexpr->bytes
-                                   (tokenize-arg->jsexpr to-send))
+                                   (map tokenize-arg->jsexpr to-send))
                            #:method #"POST"
                            #:headers '(#"Content-Type: application/json")))
-      (delay/sync
+      (delay/thread
        ;; TODO: error handling
-       (handle-tokenize-jsexpr-result
-        (read-json body-in)))))))
+       (define rslt
+         (try-parse-result-jsexpr 
+          (read-json body-in)))
+       (unless rslt
+         (error 'make-do-request/tokenize "malformed result jsexpr"))
+       rslt)))))
 
 ;;;;;;;;
 

@@ -1,10 +1,12 @@
-#lang racket
+#lang racket/base
 
 (require "server-startup.rkt"
          "http-request.rkt"
-         "interface.rkt"
          (submod "interface.rkt" private)
          adjutor
+         racket/contract
+         racket/match
+         racket/promise
          )
 
 (provide basic-pydrnlp?

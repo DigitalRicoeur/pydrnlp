@@ -76,21 +76,29 @@
 
 
 
+
+
+
+
+
+
+
 @section{Tokenization}
 
 @deftogether[
  (@defproc[(pydrnlp-tokenize-evt [instance pydrnlp?]
-                                 [segments tokenize-arg/c])
-           (evt/c (promise/c tokenization-results/c))]
-   @defthing[tokenize-arg/c flat-contract?
-             #:value (hash/c string?
-                             (hash/c natural-number/c
-                                     string?)
-                             #:immutable #t)]
-   @defthing[tokenization-results/c flat-contract?
-             #:value (hash/c string?
-                             tokenized-document?
-                             #:immutable #t)])]{
+                                 [segments (listof tokenize-arg?)])
+           (evt/c (promise/c (listof tokenize-result?)))]
+   @defstruct*[tokenize-arg
+               ([lang (or/c 'en 'fr)]
+                [key jsexpr?]
+                [text string?])]
+   @defstruct*[tokenize-result
+               ([key jsexpr?]
+                [body (listof token?)])]
+   @defstruct*[token
+               ([lemma symbol?]
+                [text (and/c string? immutable?)])])]{
  The core functionality provided by the Python layer
  is a form of tokenization: splitting some text into @deftech{tokens}
  (words, to a first approximation); identifying the @deftech{lemma},
@@ -100,6 +108,7 @@
  excessively common and uninteresting (e.g. ``the'').
 
  This functionality is accessed through @racket[pydrnlp-tokenize-evt].
+ @;{@;TODO: Update this
  The structure of its @racket[segments] argument is to support sending
  multiple segments at once.
  Its outer hash table represents a collection of documents, where
@@ -107,88 +116,19 @@
  mapped to an inner hash table representing the document's collection
  of segments: it maps numbers identifying the segments to strings
  containing their text.
+ }
  
  Calling @racket[pydrnlp-tokenize-evt] produces a
  @rkttech{synchronizable event} that @bold{TODO: think through more
   specific details}. The event becomes ready for synchronization
  when a result is received from the Python layer. Its synchronization
  result is a promise that, when forced, either raises an exception or
+ returns @bold{TODO: document this better}.
+ @;{@;TODO: Update this
  returns a hash table mapping each string key that identified a document
  in the @racket[segments] argument to a
  corresponding @racket[tokenized-result] (documented below).
-}
-
-@deftogether[
- (@defstruct*[tokenized-document ([lemma->string lemma->string/c]
-                                  [segments (hash/c natural-number/c
-                                                    lemma->count/c
-                                                    #:immutable #t)])
-              #:omit-constructor]
-   @defthing[lemma->count/c flat-contract?
-             #:value (hash/c symbol?
-                             exact-positive-integer?
-                             #:immutable #t)]
-   
-   @defproc[(union:lemma->count [hsh lemma->count/c] ...)
-            lemma->count/c])]{
- A @racket[tokenized-document] represents the result of
- tokenizing a single document with @racket[pydrnlp-tokenize-evt].
- A @tech{lemma} is represented by a symbol, representing
- its essential uniqueness properties.
- The @racket[lemma->string] field provides a mapping from
- lemmas to strings; see @racket[lemma->string/c] below
- for more details.
-
- The hash table in the @racket[segments] field maps the numbers
- used to identify the document's segments to hash tables of
- results, which satisfy @racket[lemma->count/c].
- These map each lemma that occured in the segment to the
- number of times it occurred.
-
- Clients of this library will often want to combine
- @racket[lemma->count/c] hash tables, e.g. to compute the
- results for the document as a whole.
- Use @racket[union:lemma->count] for that purpose.
-
- Note that the @racket[tokenized-document] constructor is
- not provided.
-}
-
-@deftogether[
- (@defthing[lemma->string/c flat-contract?
-            #:value (hash/c symbol?
-                            string?
-                            #:immutable #t)]
-   @defproc[(union:lemma->string [hsh lemma->string/c] ...)
-            lemma->string/c])]{
- One might think that a @tech{lemma} would be suitable
- for display to an end user, but the ammount of normalization
- means that this is not the case.
- Some words are case-folded that shouldn't be
- (e.g. @racket["DuFay"]), and some lemmas are strange in
- other ways (e.g. @racket["whatev"]).
-
- A hash table satisfying @racket[lemma->string/c] maps the
- symbolic lemma to a @deftech{candidate representative}
- string that appeared in the actual text from which the
- table was generated.
-
- Unlike with @racket[lemma->count/c] hash tables, where more
- specific tables represent granularity in the data,
- a lemma should always be displayed to the user using the
- best candidate representative string from @italic{all}
- available text in the corpus, even in a context when 
- only a subset of the corpus is being analyzed.
- Some particular passage might only contain a mediocre
- candidate representative for a lemma that has a better
- candidate from elsewhere in the corpus.
- The function @racket[union:lemma->string] merges several
- such hash tables, choosing for each lemma the best
- available candidate representative.
- (The precise notion of ``best'' is unspecified and
- subject to refinement over time.)
- These results are reported at a per-document level
- primarily to support caching.
+ }
 }
 
 
@@ -220,8 +160,8 @@
 
 @deftogether[
  (@defproc[(pydrnlp-tokenize [instance pydrnlp?]
-                             [segments tokenize-arg/c])
-           tokenization-results/c]
+                             [segments (listof tokenize-arg?)])
+           (listof tokenize-result?)]
    @defproc[(pydrnlp-tokenizer-revision [instance pydrnlp?])
             jsexpr?])]{
  Blocking versions of @racket[pydrnlp-tokenize-evt] and

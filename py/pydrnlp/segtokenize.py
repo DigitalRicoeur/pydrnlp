@@ -7,7 +7,6 @@ from pydrnlp.drtoken import tokenFilterRevision
 from pydrnlp.drlanguage import drLanguageRevision, Lemma, get_drLanguage
 
 
-
 # tokenizerRevision : -> RevisionJsexpr
 def tokenizerRevision() -> "RevisionJsexpr":
     """Returns a non-False JSON value identifying the current revision.
