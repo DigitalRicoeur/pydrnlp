@@ -12,6 +12,10 @@
          installer
          )
 
+;; TODO: should check exit code on updating conda
+;; so e.g. a network error doesn't cause setup
+;; to be skipped in future
+
 (define init-env
   (current-environment-variables))
 
