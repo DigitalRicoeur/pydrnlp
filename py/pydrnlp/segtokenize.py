@@ -12,8 +12,8 @@ def tokenizerRevision() -> "RevisionJsexpr":
     """Returns a non-False JSON value identifying the current revision.
 
     The intended purpose is for clients to
-    be able to cache responses: 
-    As long as tokenizerRevision() returns the same value, 
+    be able to cache responses:
+    As long as tokenizerRevision() returns the same value,
     calling this API on the same input should return equivalent output.
     This enables clients to cache responses.
     The returned value incorporates the results of
@@ -30,7 +30,7 @@ def tokenizerRevision() -> "RevisionJsexpr":
 TokenizedSegment = {"key": "JSON",
                     "tokenized": "ListOf(Lemma)"}
 InputSegment = {"key": "JSON",
-                "lang": "str",
+                "lang": str,
                 "body": str}
 
 # tokenizeSegment :
@@ -38,7 +38,7 @@ def tokenizeSegment(sgmnt : InputSegment) -> TokenizedSegment:
     """Processes the JSON value representing a segment.
 
     Uses get_drLanguage to get the drLanguage instance specified
-    by the "lang" field of the input, 
+    by the "lang" field of the input,
     then calls its tokenize method to obtain Lemma dictionaries,
     and wraps the results into a JSON value.
     """
@@ -53,6 +53,3 @@ def tokenizeSegmentList(jsIn : "ListOf(InputSegment)") -> "ListOf(TokenizedSegme
     """Simply maps tokenizeSegment over the list of JSON values.
     """
     return list(map(tokenizeSegment,jsIn))
-
-
-

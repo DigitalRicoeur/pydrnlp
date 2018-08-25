@@ -20,46 +20,50 @@
            tokenizer?]
    @defproc[(tokenizer? [v any/c])
             boolean?])]{
- A @deftech{tokenizer instance} encapsulates a Python process
- for performing @tech{tokenization}.
- Tokenizer instances are stateful:
- each instance supports at most one call
- to @racket[tokenizer-tokenize!].
+ A @deftech{tokenizer} encapsulates a Python process
+ for performing @tech{tokenization}
+ via @racket[tokenizer-tokenize].
+
+ Tokenizer values are thread-safe: calls to
+ @racket[tokenizer-tokenize] are handled sequentially,
+ but @racket[tokenizer-tokenize] can be called 
+ with the same @tech{tokenizer} concurrently
+ from multiple threads, even before earlier calls to
+ @racket[tokenizer-tokenize] have returned.
  
- System-level resources encapsulated by the
- @tech{tokenizer instance} are placed in the custody of
+ Creating a @tech{tokenizer} allocates system-level
+ resources, which are placed in the custody of
  the @racket[current-custodian].
- Tokenization can be interrupted if the custodian
- is shut down, or alternatively if
- the tokenizer instance is explicitly terminated
- with @racket[tokenizer-kill!].
- 
- When a @tech{tokenizer instance} has been created
- that will not be used with @racket[tokenizer-tokenize!],
- one of these mechanisms must be used to free
- the system-level resources.
+ These resources must be freed when the tokenizer is
+ no longer needed, either by shutting down the custodian
+ or by calling @racket[tokenizer-kill].
 }
 
 @defproc[(tokenizer-revision [t tokenizer?])
          jsexpr?]{
  Returns a JSON-convertable value representing the
  tokenization implementation used by the
- @tech{tokenizer instance} @racket[t].
+ @tech{tokenizer} @racket[t].
  
  Tokenization is a fairly expensive operation:
  the purpose of @racket[tokenizer-revision] is to
  support caching.
- If two @tech{tokenizer instances} return @racket[equal?]
+ If two @tech{tokenizers} return @racket[equal?]
  values from @racket[tokenizer-revision],
  they are guaranteed to be equivalent in terms of
- @racket[tokenizer-tokenize!], even across multiple
+ @racket[tokenizer-tokenize], even across multiple
  runs of a program.
+ When the result of @racket[tokenizer-revision] changes,
+ any cache is stale.
+
+ Calling @racket[tokenizer-revision] does not block:
+ the value is computed when the @tech{tokenizer} is created.
 }
 
 @deftogether[
- (@defproc[(tokenizer-tokenize! [t tokenizer?]
-                                [args (listof tokenize-arg?)])
-           (promise/c (listof tokenize-result?))]
+ (@defproc[(tokenizer-tokenize [t tokenizer?]
+                               [args (listof tokenize-arg?)])
+           (listof tokenize-result?)]
    @defstruct*[tokenize-arg
                ([lang (or/c 'en 'fr)]
                 [key jsexpr?]
@@ -70,25 +74,26 @@
    @defstruct*[token
                ([lemma symbol?]
                 [text (and/c string? immutable?)])])]{
- The purpose of the Python process encapsulated by a
- @tech{tokenizer instance} is to perform a a form of
- @deftech{tokenization}: splitting some text into
+ Performs @tech{tokenization} on @racket[args] using
+ the @tech{tokenizer} @racket[t].
+                                                      
+ Specifically, @deftech{tokenization} splits some text into
  @deftech{tokens} (words, to a first approximation)
- and identifying the @deftech{lemma},
+ and identifies the @deftech{lemma},
  or normalized base form, for each token.
  The implementation attempts to ignore lemmas which are
  excessively common and uninteresting (e.g. ``the'').
 
- This functionality is accessed through
- @racket[tokenizer-tokenize!].
- It is called with a list of @racket[tokenize-arg]
- values. The @racket[tokenize-arg-lang] identifies the
- language to be used (currently English or French),
- the @racket[tokenize-arg-text] is the actual text
+ The segments of text to be tokenized are communicated
+ using @racket[tokenize-arg] values.
+ The @racket[tokenize-arg-lang] identifies the
+ language of the text.
+ English and French are currently supported.
+ The @racket[tokenize-arg-text] is the actual text
  to be tokenized, and the @racket[tokenize-arg-key]
  is an arbitrary JSON-convertable value that is
  propigated to the @racket[tokenize-result-key] field
- of the corresponding @racket[tokenize-result] value.\
+ of the corresponding @racket[tokenize-result] value.
 
  The @racket[token] datastructure includes both the
  @tech{lemma} (as a symbol, for easy comparison)
@@ -102,43 +107,34 @@
  the best representitive string for each lemma, but
  that is beyond the scope of @racketmodname[pydrnlp].
 
- A given @tech{tokenizer instance} can be used with
- @racket[tokenizer-tokenize!] at most once:
- any subsequent call will raise an exception.
+ If the @tech{tokenizer} @racket[t] is not running
+ (in the sense of @racket[tokenizer-running?])
+ when @racket[tokenizer-tokenize] is called,
+ or if it stops running before returning a result,
+ an exception is raised.
+
+ Note that @racket[tokenizer-tokenize] will block
+ while waiting for the Python process.
 }
 
-@defproc[(tokenizer-promise [t tokenizer?])
-         (promise/c (listof tokenize-result?))]{
- Returns the same promise that @racket[tokenizer-tokenize!]
- would return.
 
- Unlike @racket[tokenizer-tokenize!], @racket[tokenizer-promise]
- can be called repeatedly and at any time.
- If the promise is obtained via @racket[tokenizer-promise]
- before @racket[tokenizer-tokenize!] has been called,
- forcing the promise will block until @racket[tokenizer-tokenize!]
- is called or the @tech{tokenizer instance} @racket[t]
- otherwise becomes unable to compute a value
- (in which case forcing the promise will raise an exception).
-}
-
-@defproc[(tokenizer-accepting? [t tokenizer?])
+@defproc[(tokenizer-running? [t tokenizer?])
          boolean?]{
- Returns @racket[#true] if and only if
- @racket[tokenizer-tokenize!] would not raise
- an exception when called with @racket[t],
- which implies that neither
- @racket[tokenizer-tokenize!] nor @racket[tokenizer-kill!]
- have ever been called with @racket[t]
- and that @racket[t]'s controlling custodian has not
- been shut down.
+ Returns @racket[#true] unless the Python process
+ encapsulated by the @tech{tokenizer} @racket[t]
+ has terminated.
+ Termination can be triggerd from Racket by calling
+ @racket[(tokenizer-kill t)] or shutting down its
+ controlling @rkttech{custodian}, but a @tech{tokenizer}
+ may also terminate for external reasons, such as
+ an unhandled exception in the Python process.
 }
 
-@defproc[(tokenizer-kill! [t tokenizer?])
+@defproc[(tokenizer-kill [t tokenizer?])
          any]{
-Releases the system-level resources assosciated with
-the @tech{tokenizer instance} @racket[t],
-equivalently to shutting down its controlling custodian.
+ Releases the system-level resources assosciated with
+ the @tech{tokenizer} @racket[t],
+ equivalently to shutting down its controlling custodian.
 }
           
 

@@ -34,8 +34,15 @@ Ceux qui m'ont banni de vos yeux.
  })))
 
 (define t
-  (launch-tokenizer))
+  (launch-tokenizer #:quiet? #f))
 
 (tokenizer-revision t)
 
-(force (tokenizer-tokenize! t args))
+(for ([arg (in-list args)])
+  (println (tokenizer-tokenize t (list arg))))
+
+(tokenizer-tokenize t args)
+
+
+
+

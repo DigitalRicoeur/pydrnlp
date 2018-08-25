@@ -3,19 +3,18 @@
 """
 
 from spacy.lang.en.stop_words import STOP_WORDS as STOP_WORDS
-#from spacy.lang.fr.stop_words import STOP_WORDS as fr_STOP_WORDS
 from spacy.tokens import Token
 
 
 def tokenFilterRevision() -> "RevisionJsexpr":
     return 0
 
-    
+
 # interestingPOS : str -> bool
 def interestingPOS(str : str) -> bool:
     """Recognizes the interesting potential values from token.pos_
 
-     Notable exclusions: "NUM"->numeral, "SYM"=>symbol
+    Notable exclusions: "NUM"->numeral, "SYM"=>symbol
 
     "pos"/"POS" stands for "Part of speach"
     """
@@ -30,7 +29,7 @@ def interestingPOS(str : str) -> bool:
 
 # boringPOS : str -> bool
 def boringPOS(str : str) -> bool:
-    """The opposite of interestingPOS
+    """The opposite of interestingPOS()
     """
     return not interestingPOS(str)
 
@@ -39,11 +38,11 @@ def boringPOS(str : str) -> bool:
 def tokenQuicklyFails(token : Token) -> bool:
     """Predicate recognizing tokens which obviously should NOT be counted.
 
-    Specifically, recognizes tokens which are stop words, punctuation, 
+    Specifically, recognizes tokens which are stop words, punctuation,
     or space, or which have an uninteresting part of speach tag
     according to boringPOS.
 
-    Used to implement tokenShouldUse.
+    Used to implement tokenShouldUseGivenStopWords().
     """
     return (token.is_stop or
             token.is_punct or
@@ -52,8 +51,8 @@ def tokenQuicklyFails(token : Token) -> bool:
             boringPOS(token.pos_))
 
 
-# tokenShouldUseWithStopWords : Token STOP_WORDS -> bool
-def tokenShouldUseWithStopWords(token : Token, stop_words : "STOP_WORDS") -> bool:
+# tokenShouldUseGivenStopWords : Token STOP_WORDS -> bool
+def tokenShouldUseGivenStopWords(token : Token, STOP_WORDS : "STOP_WORDS") -> bool:
     """Recognizes tokens which should be included in counting
     with respect to the given STOP_WORDS.
 
@@ -74,12 +73,13 @@ def tokenShouldUseWithStopWords(token : Token, stop_words : "STOP_WORDS") -> boo
     to be in STOP_WORDS. Investigate further.
     """
     return not (tokenQuicklyFails(token) or
-                (token.lemma_ in stop_words) or
-                (token.lower_ in stop_words))
+                (token.lemma_ in STOP_WORDS) or
+                ((token.lower_ != token.lemma_)
+                and (token.lower_ in STOP_WORDS)))
 
 # tokenShouldUse : Token -> bool
 def tokenShouldUse(token : Token) -> bool:
-    """Like tokenShouldUseWithStopWords, but allways uses
+    """Like tokenShouldUseGivenStopWords(), but allways uses
     STOP_WORDS from spacy.lang.en.stop_words.
     """
-    return tokenShouldUseWithStopWords(token, STOP_WORDS)
+    return tokenShouldUseGivenStopWords(token, STOP_WORDS)

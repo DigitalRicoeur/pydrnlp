@@ -5,15 +5,14 @@ This module provides the instances drEnglish and drFrench.
 The function get_drLanguage selects the appropriate instance given
 a lanugage string.
 
-Loading language models from SpaCy is slow.
-I should look into doing it lazily.
+Models from SpaCy are loaded lazily.
 """
 
 import spacy
 from spacy.tokens import Token
 from spacy.lang.en.stop_words import STOP_WORDS as _en_stop_words
 from spacy.lang.fr.stop_words import STOP_WORDS as _fr_stop_words
-from pydrnlp.drtoken import tokenShouldUseWithStopWords
+from pydrnlp.drtoken import tokenShouldUseGivenStopWords
 
 
 def drLanguageRevision() -> "RevisionJsexpr":
@@ -52,28 +51,20 @@ class drLanguage:
     def _doNLP(self, s : str) -> "IteratorOf(Token)":
         nlp = self._forceNLP()
         return nlp(s)
-    # _tokenShouldUse : self Token -> bool
-    def _tokenShouldUse(self, token : Token) -> bool:
-        return tokenShouldUseWithStopWords(token, self.__stop_words)
     # tokenizedPassageLemmas : self IteratorOf(Token) -> IteratorOf(Lemma)
     def _tokenizedPassageToLemmas(self, doc : "IteratorOf(Token)") -> "IteratorOf(Lemma)":
         """Converts tokens to JSON-convertable Lemma dictionaries.
 
-        Tokens which do not satisfy tokenShouldUse are discarded.
+        Tokens which do not satisfy tokenShouldUseGivenStopWords()
+        with this language's stop words are discarded.
 
         The purpose of the "text" field is to provide an example
         of an actual use of the word, as the lemma is always
         normalized, but some words (e.g. "DuFay") shouldn't be.
         (Also, some lemmas are strange, like "whatev".)
-
-        Currently, choosing the best example string is delegated to
-        Racket, which avoids logic duplication and lets the Python
-        layer return faster.
-        The downside is the transmitted JSON message may be longer than
-        it would otherwise have to be.
         """
         for token in doc:
-            if self._tokenShouldUse(token):
+            if tokenShouldUseGivenStopWords(token, self.__stop_words):
                 yield {"lemma":token.lemma_ ,
                        "text":token.text}
     # tokenize : self str -> ListOf(Lemma)
@@ -86,8 +77,9 @@ class drLanguage:
 
 # Could a custom pipeline do less work faster?
 # Also, is garbage an issue?
-_en_nlpThunk = lambda: spacy.load('en_core_web_sm', disable=['parser','ner'])
-_fr_nlpThunk = lambda: spacy.load('fr_core_news_sm', disable=['parser','ner'])
+_disableThese = ['parser','ner']
+_en_nlpThunk = lambda: spacy.load('en_core_web_sm', disable=_disableThese)
+_fr_nlpThunk = lambda: spacy.load('fr_core_news_sm', disable=_disableThese)
 
 
 drEnglish = drLanguage(_en_nlpThunk, _en_stop_words)
