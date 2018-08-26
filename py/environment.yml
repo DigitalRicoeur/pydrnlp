@@ -2,6 +2,8 @@
 # For manual use:
 #   conda env create --file environment.yml --prefix condaenv
 #   conda env update --file environment.yml --prefix condaenv
+#   conda activate condaenv/
+#   conda deactivate
 name: pydrnlp
 channels:
   - defaults

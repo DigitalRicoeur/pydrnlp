@@ -23,26 +23,66 @@
  Python dependencies.
  })
         (tokenize-arg 'fr 3 ƒstring-append{
-Mon cœur se recommande à vous
-Tout plein d'ennui et de martyre ;
-Au moins en dépit des jaloux
-Faites qu'adieu vous puisse dire !
-Ma bouche qui savait sourire
-Et conter propos gracieux
-Ne fait maintenant que maudire
-Ceux qui m'ont banni de vos yeux.
+ Mon cœur se recommande à vous
+ Tout plein d'ennui et de martyre ;
+ Au moins en dépit des jaloux
+ Faites qu'adieu vous puisse dire !
+ Ma bouche qui savait sourire
+ Et conter propos gracieux
+ Ne fait maintenant que maudire
+ Ceux qui m'ont banni de vos yeux.
  })))
 
+(define cust
+  (make-custodian))
+
 (define t
-  (launch-tokenizer #:quiet? #f))
+  (parameterize ([current-custodian cust])
+    (launch-tokenizer #:quiet? #f)))
+
+(let ([lst (custodian-managed-list cust (current-custodian))])
+  (values lst
+          (custodian-managed-list (car (filter custodian? lst))
+                                  cust)))
 
 (tokenizer-revision t)
 
 (for ([arg (in-list args)])
-  (println (tokenizer-tokenize t (list arg))))
+  (pretty-print (tokenizer-tokenize t (list arg))))
 
 (tokenizer-tokenize t args)
 
+(define extra
+  (list (tokenize-arg 'en 99999 ƒstring-append{
+ Climate change policy toppled the government in Australia on Friday.
 
+ How much does that really matter?
 
+ It is certain to keep Australia from meeting its emissions targets
+ under the Paris climate agreement.
+
+ It’s also a glimpse into what a potent political issue climate change
+ and energy policy can be in a handful of countries with powerful fossil
+ fuel lobbies, namely Australia, Canada and the United States.
+
+ In Australia, the world’s largest exporter of coal, climate and energy
+ policy have infused politics for a decade, helping to bring down both
+ liberal and conservative lawmakers.
+
+ This week, the failure to pass legislation that would have reined in
+ greenhouse gas emissions precipitated Malcolm Turnbull’s ouster as
+ prime minister. He was elbowed out by Scott Morrison, an ardent
+ champion of the Australian coal industry who is known for having
+ brought a lump of the stuff to Parliament.
+
+ It could be a bellwether for next year’s Canadian elections, expected
+ in October, in which Prime Minister Justin Trudeau faces a powerful
+ challenge from politicians aligned with the country’s oil industry.
+ Conservatives have pledged to undo Mr. Trudeau’s plans to put a price
+ on carbon nationwide if they take power. At the provincial level,
+ conservatives won a majority in Ontario after campaigning against
+ the province’s newly enacted cap-and-trade program.                                      
+ })))
+
+(tokenizer-tokenize t extra)
 

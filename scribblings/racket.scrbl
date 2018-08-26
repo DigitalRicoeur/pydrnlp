@@ -124,7 +124,7 @@
  encapsulated by the @tech{tokenizer} @racket[t]
  has terminated.
  Termination can be triggerd from Racket by calling
- @racket[(tokenizer-kill t)] or shutting down its
+ @racket[(tokenizer-kill t)] or by shutting down @racket[t]'s
  controlling @rkttech{custodian}, but a @tech{tokenizer}
  may also terminate for external reasons, such as
  an unhandled exception in the Python process.

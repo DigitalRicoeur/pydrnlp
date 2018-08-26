@@ -36,6 +36,8 @@
              [text (and/c string? immutable?)])]
           ))
 
+;; TODO: think about exn:break
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Data Structures:
@@ -58,26 +60,21 @@
              'key key
              'body text)]))
 
-(define try-jsexpr->tokenize-result
-  (match-lambda
-    [(hash-table ['key key]
-                 ['tokenized (list (hash-table
-                                    ['lemma (app string->symbol lemma...)]
-                                    ['text (app datum-intern-literal text...)])
-                                   ...)])
-     (tokenize-result key (map token lemma... text...))]
-    [_
-     #f]))
-
 (define (try-parse-result-jsexpr js)
-  (and (list? js)
-       (let/ec return
-         (for/list ([j (in-list js)])
-           (define rslt
-             (try-jsexpr->tokenize-result j))
-           (unless rslt
-             (return #f))
-           rslt))))
+  (let/ec return
+    (and
+     (list? js)
+     (for/list ([j (in-list js)])
+       (match j
+         [(hash-table
+           ['key key]
+           ['tokenized (list (hash-table
+                              ['lemma (app string->symbol lemma...)]
+                              ['text (app datum-intern-literal text...)])
+                             ...)])
+          (tokenize-result key (map token lemma... text...))]
+         [_
+          (return #f)])))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -97,23 +94,23 @@
 (define (launch-tokenizer #:quiet? [quiet? #t])
   (define cust
     (make-custodian))
-  (match-define (list in-from-py out-to-py pid _ control)
-    (parameterize ([current-custodian cust]
-                   [current-subprocess-custodian-mode 'kill]
-                   [current-environment-variables tokenizer-env]
-                   [current-directory py-dir])
-      (process*/ports #:set-pwd? #t
-                      #f
-                      #f
-                      (if quiet?
-                          (open-output-nowhere)
-                          (current-error-port))
-                      python3
-                      #"-m"
-                      #"pydrnlp.stdio")))
   (with-handlers ([exn:fail? (λ (e)
                                (custodian-shutdown-all cust)
                                (raise e))])
+    (match-define (list in-from-py out-to-py pid _ control)
+      (parameterize ([current-custodian cust]
+                     [current-subprocess-custodian-mode 'kill]
+                     [current-environment-variables tokenizer-env]
+                     [current-directory py-dir])
+        (process*/ports #:set-pwd? #t
+                        #f
+                        #f
+                        (if quiet?
+                            (open-output-nowhere)
+                            (current-error-port))
+                        python3
+                        #"-m"
+                        #"pydrnlp.stdio")))
     (thread
      (λ ()
        (control 'wait)
@@ -136,6 +133,10 @@
                  (read-json in-from-py)))
              (async-channel-put reply-ach rslt)
              (loop))))))
+    (thread
+     (λ ()
+       (sync (thread-dead-evt worker))
+       (custodian-shutdown-all cust)))
     (tokenizer revision cust worker)))
 
 (define (tokenizer-running? it)
