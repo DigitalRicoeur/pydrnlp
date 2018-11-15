@@ -15,6 +15,14 @@
          installer
          )
 
+(TODO/void PATH in newer conda)
+;; The py-dir and python3 still work,
+;; but conda after 4.4 doesn't put conda in your PATH
+;; unless you activate the base environment.
+;; We may just require everyone to do that.
+;; The conda 4.6 release may provide better options,
+;; like `conda run`.
+
 (define init-env
   (current-environment-variables))
 
@@ -34,7 +42,8 @@
   (build-path condaenv-dir "bin/"))
 
 (define conda
-  (find-executable-path "conda"))
+  ;; could shell out and check CONDA_EXE environment variable
+  (find-executable-path* "conda"))
 
 (define conda-python-exe
   (and conda
@@ -47,21 +56,29 @@
                   (link-exists? pth))
               pth))))
 
-(define conda-env
+(define* conda-env
+  (define condaenv-dir-bytes
+    (bytes->immutable-bytes
+     (path->bytes condaenv-dir)))
   (environment-variables-set*
    init-env
-   #"CONDA_DEFAULT_ENV" (path->bytes condaenv-dir)
-   #"CONDA_PREFIX" (path->bytes condaenv-dir)
+   #"CONDA_DEFAULT_ENV" condaenv-dir-bytes
+   #"CONDA_PREFIX" condaenv-dir-bytes
    #"CONDA_EXE" (and conda (path->bytes conda))
    #"CONDA_PYTHON_EXE" (if conda-python-exe
                            (path->bytes conda-python-exe)
                            (environment-variables-ref init-env
                                                       #"CONDA_PYTHON_EXE"))
    #"CONDA_SHLVL" #"1"
-   #"PATH" (bytes-append (path->bytes condaenv-bin)
-                         #":" ;; is this correct on Windows ???
-                         (or (environment-variables-ref init-env #"PATH")
-                             #""))
+   #"PATH" (let ([condaenv-bin-bs (path->bytes condaenv-bin)]
+                 [sep (case (system-type 'os)
+                        [(windows) #";"]
+                        [else #":"])]
+                 [old-path (environment-variables-ref init-env #"PATH")])
+             ;; is this correct on Windows ???
+             (if old-path
+                 (bytes-append condaenv-bin-bs sep old-path)
+                 condaenv-bin-bs))
    ;; see http://click.pocoo.org/5/python3/#python-3-surrogate-handling
    ;; Apparently Mac OS doesn't set locale for GUI programs.
    #"LANG" (or (environment-variables-ref init-env #"LANG")
