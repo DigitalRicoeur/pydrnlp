@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require json
+         racket/list
          racket/contract
          racket/match
          racket/async-channel
@@ -37,6 +38,7 @@
           ))
 
 ;; TODO: think about exn:break
+;; Think about thread-resume / kill-safety
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -51,14 +53,16 @@
 (struct token (lemma text)
   #:transparent)
 
-(define tokenize-arg->jsexpr
-  (match-lambda
-    [(tokenize-arg lang key text)
-     (hasheq 'lang (case lang
-                     [(en) "en"]
-                     [(fr) "fr"])
-             'key key
-             'body text)]))
+(define (tokenize-args->jsexpr l-args)
+  (for/hasheq ([grp (in-list (group-by tokenize-arg-lang
+                                       l-args
+                                       eq?))])
+    (values (tokenize-arg-lang (car grp))
+            (map (match-lambda
+                   [(tokenize-arg _ key text)
+                    (hasheq 'key key
+                            'body text)])
+                 grp))))
 
 (define (try-parse-result-jsexpr js)
   (let/ec return
@@ -110,7 +114,7 @@
                             (current-error-port))
                         python3
                         #"-m"
-                        #"pydrnlp.stdio")))
+                        #"pydrnlp.tokenizer.run")))
     (thread
      (λ ()
        (control 'wait)
@@ -127,7 +131,7 @@
            (let loop ()
              (match-define (cons js reply-ach)
                (thread-receive))
-             (write-json-line js out-to-py)
+             (write-json-line js out-to-py) ;; includes flush-output
              (define rslt
                (with-handlers ([exn:fail? values])
                  (read-json in-from-py)))
@@ -147,7 +151,7 @@
 
 (define (tokenizer-tokenize it l-args)
   (define js-arg
-    (map tokenize-arg->jsexpr l-args))
+    (tokenize-args->jsexpr l-args))
   (define reply-ach
     (make-async-channel))
   (define worker

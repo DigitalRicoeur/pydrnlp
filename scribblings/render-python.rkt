@@ -33,6 +33,8 @@
     [else
      #hash()]))
 
+
+
 (define (format-dotted-name parts [post #f])
   (define sep ".\u200B")
   (string->immutable-string
@@ -257,10 +259,7 @@
 (define pre-lst
   (for/list ([{modpth m} (in-immutable-hash parsed-docs)])
     (define modpth-str (format-dotted-name modpth))
-    (pre-mod-part
-     modpth
-     (cons
-      (title (tt modpth-str))
+    (define body
       (match m
         ['not-found
          (list ƒbold{Module not found})]
@@ -281,7 +280,12 @@
                  (list-when headings?
                    (list (section "Functions")))
                  (map (functon-renderer prefix)
-                      functions))])))))
+                      functions))]))
+    (pre-mod-part modpth
+                  (if (equal? modpth '(pydrnlp))
+                      body
+                      (cons (title (tt modpth-str))
+                            body)))))
 
 (define order-specs
   '[(pydrnlp [language
@@ -289,7 +293,6 @@
               jsonio
               (tokenizer [tokenize
                           usetoken])
-              stdio
               doc])])
 
 (define order-tbl
@@ -323,8 +326,12 @@
                   (member pth fixed-order)])
                children))
   (append
-   (for/list ([pth (in-list fixed-order)])
-     (findf (λ (pr) (equal? pth (car pr))) in))
+   (for*/list ([pth (in-list fixed-order)]
+               [found (in-value
+                       (findf (λ (pr) (equal? pth (car pr)))
+                              in))]
+               #:when found)
+     found)
    (sort more string-ci<?
          #:key (compose1 format-dotted-name car))))
 
@@ -348,7 +355,9 @@
                [children (organize-child-parts pth children)]
                [children (map cdr children)])
           (cons
-           (cons pth (decode-part* (append body children)))
+           (cons pth (if (equal? pth '(pydrnlp))
+                         (append body children)
+                         (decode-part* (append body children))))
            (combine-and-render lst)))]))))
                
   

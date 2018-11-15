@@ -33,8 +33,8 @@ _all_pr_languages = {langStr: _Promise(lambda: spacy.load(shortcut))
                      }.items()}
 
     
-# getLanguage : str -> spacy.language.Language
-def getLanguage(langStr):
+# get : str -> spacy.language.Language
+def get(langStr):
     """Returns a `spacy.language.Language` instance for the given IANA string.
 
     Models from SpaCy are loaded lazily.

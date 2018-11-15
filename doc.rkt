@@ -272,10 +272,6 @@
            [modpath string?]
            [module (or/c #f "ErrorDuringImport" module/c)])))
 
-;(pretty-write (document-modules '("pydrnlp.doc")))
- 
-;(pretty-write (document-modules '("pydrnlp.language")))
-
 (define/final-prop python-docs/c
   (hash/c #:immutable #t
           (listof symbol?)

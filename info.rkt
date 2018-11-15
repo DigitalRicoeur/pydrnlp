@@ -30,7 +30,7 @@
                      ))
 
 (define scribblings '(("scribblings/pydrnlp.scrbl"
-                       ()
+                       (multi-page)
                        ("Digital Ricœur" 0)
                        )))
 

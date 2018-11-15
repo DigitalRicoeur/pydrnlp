@@ -2,8 +2,8 @@
 """Functions for filtering out uninteresting tokens.
 """
 
+import pydrnlp.stop_words as stop_words
 from pydrnlp.stop_words import tokenAnyIsStopForLanguage
-from pydrnlp.stop_words import revision as stop_words_revision
 
 
 def revision():
@@ -12,7 +12,7 @@ def revision():
     Incorporates `pydrnlp.stop_words.revision`.
     """
     thisModuleRevision = 0
-    return [thisModuleRevision, stop_words_revision()]
+    return [thisModuleRevision, stop_words.revision()]
 
 
 # posIsInteresting : str -> bool

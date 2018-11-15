@@ -1,6 +1,13 @@
 """Tools for extracting Python documentation to structured JSON.
 
+While this module exports certain public functions,
+it is primarily intended for programatic use with __name__="__main__".
 
+All non-trivial JSON values produced by this module are
+designed as type-tagged objects: that is, each is a two-element
+array, with the first element being a string identifying the type
+of the value and the second element being a JSON object
+containing the value's payload.
 """
 import inspect
 import pydoc
@@ -10,6 +17,7 @@ import json
 ## The implementation is based heavily on
 ## https://medium.com/python-pandemonium/
 ##     python-introspection-with-the-inspect-module-2c85d5aa5a48
+## as well as the implementation of pydoc.
 
 def docModpath(modpath):
     """Extracts documentation from the module at the given modpath.
@@ -215,7 +223,7 @@ def _docParameters(sig):
 
 if __name__ == "__main__":
     def show_usage_help():
-        # TODO
+        sys.stdout.write("TODO: write a usage help message.\n")
         pass
     if len(sys.argv) != 2:
         show_usage_help()

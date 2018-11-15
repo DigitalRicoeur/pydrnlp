@@ -56,6 +56,7 @@ take care of the details of creating or updating the
 virtual environment and managing Python dependencies.
 
 
+@(local-table-of-contents)
 
 @include-section["racket.scrbl"]
 @include-section["python.scrbl"]

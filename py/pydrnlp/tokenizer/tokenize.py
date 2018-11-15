@@ -24,9 +24,9 @@ JsIn:
     {LangStr: Listof[JsInSegment]}
 """
 
+import pydrnlp.language as language
+import pydrnlp.tokenizer.usetoken as usetoken
 from pydrnlp.tokenizer.usetoken import tokenShouldUseForLang
-from pydrnlp.tokenizer.usetoken import revision as usetoken_revision
-from pydrnlp.language import getLanguage, revision as language_revision
 
 # revision : -> RevisionJsexpr
 def revision():
@@ -44,7 +44,7 @@ def revision():
     When the result of tokenizerRevision() changes, any cache is stale.
     """
     thisModuleRevision = 2
-    return [thisModuleRevision, usetoken_revision(), language_revision()]
+    return [thisModuleRevision, usetoken.revision(), language.revision()]
 
 
 def _languageDocToListofJsToken(nlp, doc):
@@ -66,17 +66,17 @@ def _languageDocToListofJsToken(nlp, doc):
 
             
 def _languageTokenizeSegments(nlp, segs):
-    """ """
+    """Tokenizes a Listof[JsInSegment] segs using the language nlp."""
     args = [(jsInSeg["body"], jsInSeg["key"]) for jsInSeg in segs]
     for (doc, key) in nlp.pipe(args, as_tuples = True, n_threads = -1):
         yield {"key": key,
-               "segments": list(_languageDocToListofJsToken(nlp, doc))}
+               "tokenized": list(_languageDocToListofJsToken(nlp, doc))}
 
 
 def tokenize(jsIn):
-    """ """
+    """Tokenizes JsIn. **TODO: document this.**"""
     ret = []
     for langStr, segs in jsIn.items():
-        nlp = getLanguage(langStr)
+        nlp = language.get(langStr)
         ret.extend(_languageTokenizeSegments(nlp, segs))
     return ret
