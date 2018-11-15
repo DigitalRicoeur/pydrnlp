@@ -12,8 +12,8 @@
 (provide py-dir
          python3
          conda-environment-variables
-         installer
-         )
+         conda-available?
+         installer)
 
 (TODO/void PATH in newer conda)
 ;; The py-dir and python3 still work,
@@ -44,6 +44,9 @@
 (define conda
   ;; could shell out and check CONDA_EXE environment variable
   (find-executable-path* "conda"))
+
+(define conda-available?
+  (any->boolean conda))
 
 (define conda-python-exe
   (and conda

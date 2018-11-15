@@ -55,5 +55,9 @@ As long as you have @exec{conda} installed, Racket will automatically
 take care of the details of creating or updating the
 virtual environment and managing Python dependencies.
 
+
+
 @include-section["racket.scrbl"]
+@include-section["python.scrbl"]
+
 
