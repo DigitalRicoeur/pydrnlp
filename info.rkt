@@ -19,6 +19,7 @@
                "draw-lib"
                "typed-racket-lib"
                "typed-racket-more"
+               "markdown"
                ))
 
 (define build-deps '("scribble-lib"
@@ -27,6 +28,8 @@
                      "at-exp-lib"
                      "functional-lib"
                      "rackunit-typed"
+                     "_-exp"
+                     "rackjure"
                      ))
 
 (define scribblings '(("scribblings/pydrnlp.scrbl"
