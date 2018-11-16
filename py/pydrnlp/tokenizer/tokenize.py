@@ -1,27 +1,32 @@
 # -*- coding: utf-8 -*-
 """Core functionality for tokenizing segmented documents.
 
-Would it be useful for JsToken to track the token's
-  a) start and end positions and/or
-  b) index among significant tokens in the document?
-
-
 Types used in this module:
 --------------------------
 
-JsToken:
-    {"lemma": str, "text": str}
-JsOutSegment:
-    {"key": JsExpr,
-     "tokenized": Listof[JsToken]}
-JsOut:
-    Listof[JsOutSegment]
+- `JsToken`:
+    `{"lemma": str, "text": str}`
+
+- `JsOutSegment`:
+    `{"key": JsExpr, "tokenized": Listof[JsToken]}`
+
+- `JsOut`:
+    `Listof[JsOutSegment]`
 
 
-JsInSegment:
-    {"key": JsExpr, "body": str}
-JsIn:
-    {LangStr: Listof[JsInSegment]}
+- `JsInSegment`:
+    `{"key": JsExpr, "body": str}`
+
+- `JsIn`:
+    `{LangStr: Listof[JsInSegment]}`
+
+Would it be useful for JsToken to track the token's
+
+  a) start and end positions and/or
+
+  b) index among significant tokens in the document?
+
+Maybe preserving the ordering within the segment is good enough.
 """
 
 import pydrnlp.language as language

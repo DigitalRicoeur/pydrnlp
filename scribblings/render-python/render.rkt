@@ -340,7 +340,7 @@
 
 (define (symbol->id-content s)
   (racketidfont
-   (litchar (symbol->string s))))
+   (literal (symbol->string s))))
 
 (define (format-dotted-name parts [post #f])
   (define sep ".\u200B")

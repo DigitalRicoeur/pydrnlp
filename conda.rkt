@@ -6,8 +6,7 @@
          racket/system
          openssl/md5
          setup/path-to-relative
-         adjutor
-         )
+         adjutor)
 
 (provide py-dir
          python3
@@ -119,7 +118,7 @@
        (void)])))
 
 (define (current-environment-file-md5)
-  (call-with-input-file environment.yml
+  (call-with-input-file* environment.yml
     md5))
 
 (define (environment-up-to-date?)
@@ -128,7 +127,7 @@
                (current-environment-file-md5))))
   
 (define (save-environment-file-md5!)
-  (call-with-output-file environment-md5-file
+  (call-with-output-file* environment-md5-file
     #:exists 'truncate/replace
     (λ (out)
       (void
