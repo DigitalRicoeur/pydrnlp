@@ -24,6 +24,21 @@
                              module-doc?)))]
           [struct docstring ([xexpr* (listof xexpr/c)])]
           [struct comments ([str string?])]
+          [struct module-doc ([modpath (listof symbol?)]
+                              [text text/c]
+                              [classes (listof class-doc?)]
+                              [functions (listof function-doc?)])]
+          [struct class-doc ([name symbol?]
+                             [bases (listof base-class-ref?)]
+                             [text text/c]
+                             [methods (listof function-doc?)])]
+          [struct base-class-ref ([module (listof symbol?)]
+                                  [name symbol?])]
+          [struct function-doc
+            ([name symbol?]
+             [text text/c]
+             [parameters (listof parameter-doc?)]
+             [return (or/c #f string?)])]
           [struct parameter-doc
             ([formal-name string?]
              [kind (or/c 'POSITIONAL_ONLY 'POSITIONAL_OR_KEYWORD
@@ -31,22 +46,26 @@
                          'VAR_KEYWORD)]
              [annotation (or/c #f string?)]
              [default (or/c #f string?)])]
-          [struct function-doc
-            ([name symbol?]
-             [text text/c]
-             [parameters (listof parameter-doc?)]
-             [return (or/c #f string?)])]
-          [struct base-class-ref ([module (listof symbol?)]
-                                  [name symbol?])]
-          [struct class-doc ([name symbol?]
-                             [bases (listof base-class-ref?)]
-                             [text text/c]
-                             [methods (listof function-doc?)])]
-          [struct module-doc ([name (listof symbol?)]
-                              [text text/c]
-                              [classes (listof class-doc?)]
-                              [functions (listof function-doc?)])]
           ))
+
+(define (get-pydrnlp-docs)
+  (for/hash ([js (in-list (document-modules
+                           #:who 'get-pydrnlp-docs
+                           (pydrnlp-modules)))])
+    (match-define (list "modpath"
+                        (hash-table ['modpath (app split-python-modpath mp)]
+                                    ['module m]
+                                    [_ _] ...))
+      js)
+    (values mp
+            (match m
+              [#f 'not-found]
+              ["ErrorDuringImport" 'error-during-import]
+              [_ m]))))
+
+(define (parse-pydrnlp-docs hsh)
+  (for/hash ([{mp js} (in-immutable-hash hsh)])
+    (values mp (if (symbol? js) js (parse-module mp js)))))
 
 (define doc-env
   (conda-environment-variables))
@@ -254,7 +273,7 @@
            [classes (listof class/c)]
            [functions (listof function/c)])))
 
-(struct module-doc (name text classes functions)
+(struct module-doc (modpath text classes functions)
   #:transparent)
 
 (define (parse-module name js)
@@ -279,29 +298,9 @@
                 'error-during-import
                 module/c)))
 
-(define (get-pydrnlp-docs)
-  (for/hash ([js (in-list (document-modules
-                           #:who 'get-pydrnlp-docs
-                           (pydrnlp-modules)))])
-    (match-define (list "modpath"
-                        (hash-table ['modpath (app split-python-modpath mp)]
-                                    ['module m]
-                                    [_ _] ...))
-      js)
-    (values mp
-            (match m
-              [#f 'not-found]
-              ["ErrorDuringImport" 'error-during-import]
-              [_ m]))))
 
-(define (parse-pydrnlp-docs hsh)
-  (for/hash ([{mp js} (in-immutable-hash hsh)])
-    (values mp (if (symbol? js) js (parse-module mp js)))))
 
-(module+ main
-  (pretty-write
-   (parse-pydrnlp-docs
-    (get-pydrnlp-docs))))
+
 
 
 

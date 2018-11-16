@@ -6,4 +6,4 @@
 
 @(local-table-of-contents)
 
-@rendered
+@rendered-docs
