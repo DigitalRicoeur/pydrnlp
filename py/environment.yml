@@ -7,12 +7,12 @@
 name: pydrnlp
 channels:
   - defaults
+  - conda-forge # for spacy
 dependencies:
-  - python=3.6.5
-  - spacy=2.0.11
-  - pip=9.0.3
+  - python=3.7
+  - spacy=2.0.18
+  - pip=19.0.3
   - pip:
     - https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-2.0.0/en_core_web_sm-2.0.0.tar.gz#en_core_web_sm#egg=en-core-web-sm
     - https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-2.0.0/fr_core_news_sm-2.0.0.tar.gz#fr_core_news_sm#egg=fr_core_news_sm
     - https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-2.0.0/de_core_news_sm-2.0.0.tar.gz#de_core_news_sm#egg=de_core_news_sm
-

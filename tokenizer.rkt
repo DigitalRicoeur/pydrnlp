@@ -37,6 +37,9 @@
              [text (and/c string? immutable?)])]
           ))
 
+(module+ tmp
+  (provide tokenize-args->jsexpr))
+
 ;; TODO: think about exn:break
 ;; Think about thread-resume / kill-safety
 

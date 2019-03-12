@@ -1,5 +1,9 @@
 """Tools for extracting Python documentation to structured JSON.
 
+This module is developed with pydrnlp, but it isn't really
+specific to pydrnlp or Digital Digital Ricœur.
+If it stabalizes, it should be distributed separately.
+
 While this module exports certain public functions,
 it is primarily intended for programatic use with `__name__=="__main__"`.
 
@@ -27,9 +31,9 @@ def docModpath(modpath):
     The value of its `"modpath"` key is always the given modpath.
     The value of its `"module"` key will usually be the
     same kind of value produced by `docModule`, but it might be
-    `False`, meaning that the module was not found, or 
-    `"ErrorDuringImport"`, meaning that the module was found, 
-    but an exception occured while trying to run it to 
+    `False`, meaning that the module was not found, or
+    `"ErrorDuringImport"`, meaning that the module was found,
+    but an exception occured while trying to run it to
     obtain a module object.
     """
     def modpathDoc(mod):
@@ -73,7 +77,7 @@ def getDocText(obj):
     else:
         return ["docstring", docstr]
 
-    
+
 def docModule(mod):
     """Extracts the documentation for a given module object.
 
@@ -90,10 +94,10 @@ def docModule(mod):
     return ["module",
             {"text": getDocText(mod),
              "classes": list(_docMembers(inspect.isclass,docClass)),
-             "functions": list(_docMembers(inspect.isfunction,docFunction))}]   
+             "functions": list(_docMembers(inspect.isfunction,docFunction))}]
 
 def _nameIsPrivate(name):
-    return (("" == name) 
+    return (("" == name)
             or (("_" == name[0])
                 and not (name.startswith('__') and name.endswith('__'))))
 
@@ -111,7 +115,7 @@ def _getPublicMembersFromHere(mod, pred):
 def docClass(name, value):
     """Documents the class `value` as `name`.
 
-    The resulting object is tagged `"class"` and has 
+    The resulting object is tagged `"class"` and has
     the following keys:
 
     - `"name"`: `name`.
@@ -256,4 +260,3 @@ if __name__ == "__main__":
                   sys.stdout)
         sys.stdout.write("\n")
         exit(0)
-

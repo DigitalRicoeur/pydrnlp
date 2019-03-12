@@ -2,7 +2,7 @@
 
 (define collection "pydrnlp")
 (define pkg-desc "Racket interface to Python NLP library for Digital Ricoeur")
-(define version "0.0")
+(define version "0.0.1")
 (define pkg-authors '(philip))
 
 (define install-collection "conda.rkt")

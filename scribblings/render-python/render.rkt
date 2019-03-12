@@ -27,6 +27,8 @@
 (struct content+width (content w)
   #:transparent)
 
+;; racket-doc/scribblings/inside/utils.rkt
+
 (match-define (list |(| |)| |.| |,| : =-elem return->)
   (map (compose1 racketparenfont
                  symbol->string)

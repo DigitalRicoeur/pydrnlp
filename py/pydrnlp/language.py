@@ -1,44 +1,61 @@
 # -*- coding: utf-8 -*-
-"""Provides the function `pydrnlp.language.getLanguage`.
+"""Uniform, lazy loading of SpaCy language models
 
-TODO: en_core_web_lg sounds like it has pre-trained models and may give
+The primary entry point for Spacy functionality
+is through a `spacy.language.Language` object,
+which must be loaded through a language-specific
+model package.
+Loading a language is expensive and should not be repeated.
+Additionally, pydrnlp should be change which model we
+use for each supported language without necessitating changes
+in every Python module that needs to use `spacy.language.Language` objects.
+
+The functionality is supported through `pydrnlp.language.get()`,
+which is similar in spirit to `spacy.load()`.
+
+**TODO:** en_core_web_lg sounds like it has pre-trained models and may give
 better accuracy. OTOH it is an order of magnitude bigger (667 vs 36 MB).
 """
 
-import spacy
+import en_core_web_sm
+import fr_core_news_sm
+import de_core_news_sm
+
+_model_modules = {"en": en_core_web_sm,
+                  "fr": fr_core_news_sm,
+                  "de": de_core_news_sm}
+
+_model_revisions = sorted([[langStr, mod.__name__, mod.__version__]
+                            for langStr, mod in _model_modules.items()],
+                          key=lambda spec: spec[0])
 
 def revision():
-    return 0
+    # increment lib_revision when making a change to the
+    # logic of this module
+    lib_revision = 0
+    return [lib_revision, _model_revisions]
 
 class _Promise:
-    def __init__(self, thunk):
-        self.__thunkUnlessForced = thunk
-        self.__rslt = None
+    def __init__(self, mod):
+        self.__mod = mod
+        self.__rslt = False
     def force(self):
-        thunkUnlessForced = self.__thunkUnlessForced
-        if thunkUnlessForced:
-            rslt = thunkUnlessForced()
-            self.__rslt = rslt
-            self.__thunkUnlessForced = False
-            return rslt
+        ret = self.__rslt
+        if ret:
+            return ret
         else:
-            return self.__rslt
+            ret = self.__mod.load()
+            self.__rslt = ret
+            return ret
 
+_all_promised_languages = {langStr: _Promise(mod)
+                           for langStr, mod in _model_modules.items()}
 
-_all_pr_languages = {langStr: _Promise(lambda: spacy.load(shortcut))
-                     for langStr, shortcut in
-                     {"en": "en_core_web_sm",
-                      "fr": "fr_core_news_sm",
-                      "de": "de_core_news_sm",
-                     }.items()}
-
-    
 # get : str -> spacy.language.Language
 def get(langStr):
     """Returns a `spacy.language.Language` instance for the given IANA string.
 
     Models from SpaCy are loaded lazily.
     """
-    return _all_pr_languages[langStr].force()
+    return _all_promised_languages[langStr].force()
     # else some useful error
-

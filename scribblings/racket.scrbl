@@ -7,8 +7,7 @@
                                 date?)
                      pydrnlp
                      adjutor
-                     json
-                     ))
+                     json))
 
 @(define (rkttech . args)
    (apply tech 

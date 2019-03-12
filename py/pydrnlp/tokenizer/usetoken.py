@@ -17,7 +17,7 @@ def revision():
 
 # posIsInteresting : str -> bool
 def posIsInteresting(str):
-    """Recognizes the interesting potential values from 
+    """Recognizes the interesting potential values from
     `spacy.tokens.Token.pos_`.
 
     Notable exclusions: "NUM"->numeral, "SYM"=>symbol
@@ -35,7 +35,7 @@ def posIsInteresting(str):
 
 # posIsBoring : str -> bool
 def posIsBoring(str):
-    """The opposite of `pydrnlp.tokenizer.posIsInteresting`."""
+    """The opposite of `pydrnlp.tokenizer.usetoken.posIsInteresting`."""
     return not posIsInteresting(str)
 
 
@@ -43,11 +43,11 @@ def posIsBoring(str):
 def tokenQuicklyFails(token):
     """Predicate recognizing tokens which obviously should NOT be counted.
 
-    Specifically, recognizes tokens which are immeduate stop words, 
-    punctuation, or whitespace, or which have an uninteresting 
-    part of speech tag according to `pydrnlp.tokenizer.posIsBoring`.
+    Specifically, recognizes tokens which are immeduate stop words,
+    punctuation, or whitespace, or which have an uninteresting
+    part of speech tag according to `pydrnlp.tokenizer.usetoken.posIsBoring`.
 
-    Used to implement `pydrnlp.tokenizer.tokenShouldUseForLang`.
+    Used to implement `pydrnlp.tokenizer.usetoken.tokenShouldUseForLang`.
     """
     return (token.is_stop or
             token.is_punct or
@@ -61,10 +61,10 @@ def tokenShouldUseForLang(token, lang):
     """Recognizes tokens which should be included in counting
     with respect to the given `spacy.language.Language` instance.
 
-    Currently, it checks that neither `pydrnlp.tokenizer.tokenQuicklyFails`
+    Currently, it checks that neither
+    `pydrnlp.tokenizer.usetoken.tokenQuicklyFails`
     nor `pydrnlp.stop_words.tokenAnyIsStopForLanguage`
     return `True` for the given token.
     """
     return not (tokenQuicklyFails(token) or
                 tokenAnyIsStopForLanguage(token, lang))
-
