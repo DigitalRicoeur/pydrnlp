@@ -8,8 +8,7 @@
 (define install-collection "conda.rkt")
 
 (define compile-omit-paths '("py/condaenv/"
-                             "py/pydrnlp/"
-                             ))
+                             "py/pydrnlp/"))
 
 (define deps '("base"
                ("adjutor" #:version "0.2.2")
@@ -20,7 +19,12 @@
                "typed-racket-lib"
                "typed-racket-more"
                "markdown"
-               ))
+               "reprovide-lang"
+               ("db-lib" #:version "1.4")
+               ("sql" #:version "1.5")
+               "data-lib"
+               ("ricoeur-tei-utils" #:version "0.5.7")
+               "gregor-lib"))
 
 (define build-deps '("scribble-lib"
                      "racket-doc"
@@ -29,8 +33,7 @@
                      "functional-lib"
                      "rackunit-typed"
                      "_-exp"
-                     "rackjure"
-                     ))
+                     "rackjure"))
 
 (define scribblings '(("scribblings/pydrnlp.scrbl"
                        (multi-page)
