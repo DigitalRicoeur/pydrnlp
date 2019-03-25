@@ -83,6 +83,7 @@
         [`(img ,(list-no-order `[src ,src] `[alt ,alt] `[title ,title]))
          "image: TO-DO"] ;; Can Scribble inline an external image ??
         [(? string? s) s]
+        ['hellip "…"] ;; (pre-content? 'hellip) -> #f
         [(? symbol? s) s]
         ;; TO-DO: Footnotes
         [x (format "IGNORING ~v\n" x)]))))

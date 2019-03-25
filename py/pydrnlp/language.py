@@ -33,7 +33,11 @@ def revision():
     # increment lib_revision when making a change to the
     # logic of this module
     lib_revision = 0
-    return [lib_revision, _model_revisions]
+    # update spacy_revision on substantive updates to spaCy
+    spacy_revision = "2.1.3"
+    return [lib_revision,
+            spacy_revision,
+            _model_revisions]
 
 class _Promise:
     def __init__(self, mod):

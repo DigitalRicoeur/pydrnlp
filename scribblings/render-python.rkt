@@ -39,9 +39,7 @@
   '[(pydrnlp [language
               stop_words
               jsonio
-              (tokenizer [run
-                          tokenize
-                          usetoken])
+              trends
               doc])])
 
 (define to-splice
