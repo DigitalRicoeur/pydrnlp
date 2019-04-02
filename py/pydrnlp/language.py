@@ -17,11 +17,11 @@ which is similar in spirit to `spacy.load()`.
 better accuracy. OTOH it is an order of magnitude bigger (667 vs 36 MB).
 """
 
-import en_core_web_sm
+import en_core_web_md
 import fr_core_news_sm
 import de_core_news_sm
 
-_model_modules = {"en": en_core_web_sm,
+_model_modules = {"en": en_core_web_md,
                   "fr": fr_core_news_sm,
                   "de": de_core_news_sm}
 
