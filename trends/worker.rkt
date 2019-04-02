@@ -9,16 +9,19 @@
          racket/system
          pydrnlp/worker)
 
-(provide trends-analyzer?
+(provide trends-engine?
+         trends-debug-engine?
+         launch-trends-debug-engine
+         trends-debug-engine-tokenize
          (contract-out
-          [launch-trends-analyzer
+          [launch-trends-engine
            (->* {}
                 {#:quiet? any/c}
-                trends-analyzer?)]
-          [trends-analyzer-revision
-           (-> trends-analyzer? jsexpr?)]
-          [trends-analyzer-analyze
-           (-> trends-analyzer?
+                trends-engine?)]
+          [trends-engine-revision
+           (-> trends-engine? jsexpr?)]
+          [trends-engine-tokenize
+           (-> trends-engine?
                (listof json-segment?)
                (listof trends-segment-result?))]
           [struct trends-segment-result
@@ -55,7 +58,7 @@
 (struct token (lemma text)
   #:transparent)
 
-(define-python-worker trends-analyzer analyze
+(define-python-worker trends-engine tokenize
   #"pydrnlp.trends"
   json-segments->jsexpr
   (λ (js)
@@ -76,3 +79,15 @@
          (trends-segment-result key (map token lemma... text...))]
         [_
          (error!)]))))
+
+(define-python-worker trends-debug-engine tokenize
+  #"pydrnlp.trends" #"--verbose"
+  json-segments->jsexpr
+  (λ (rslts)
+    (for*/list ([seg (in-list rslts)]
+                [tkn (in-list (hash-ref seg 'tokenized))])
+      (hash-update (hash-update tkn 'lemma string->symbol)
+                   'text
+                   datum-intern-literal))))
+
+  

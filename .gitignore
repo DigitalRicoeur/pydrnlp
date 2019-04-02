@@ -9,6 +9,7 @@ scribblings/*.css
 scribblings/*.js
 .environment.yaml.md5
 py/condaenv
+*.sqlite
 
 # The remainder is from
 # https://github.com/github/gitignore/blob/master/Python.gitignore

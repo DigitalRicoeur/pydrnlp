@@ -31,7 +31,7 @@
 ;; TODO: think about exn:break
 ;; Think about thread-resume / kill-safety
 
-(define ((make-launcher #:who who mod ctor) #:quiet? [quiet? #t])
+(define ((make-launcher #:who who mod ctor [py-args null]) #:quiet? [quiet? #t])
   (define cust
     (make-custodian))
   (with-handlers ([exn:fail? (λ (e)
@@ -42,15 +42,17 @@
                      [current-subprocess-custodian-mode 'kill]
                      [current-environment-variables (conda-environment-variables)]
                      [current-directory py-dir])
-        (process*/ports #:set-pwd? #t
-                        #f
-                        #f
-                        (if quiet?
-                            (open-output-nowhere)
-                            (current-error-port))
-                        python3
-                        #"-m"
-                        mod)))
+        (apply process*/ports
+               #:set-pwd? #t
+               #f
+               #f
+               (if quiet?
+                   (open-output-nowhere)
+                   (current-error-port))
+               python3
+               #"-m"
+               mod
+               py-args)))
     (thread
      (λ ()
        (control 'wait)
@@ -158,7 +160,7 @@
 
 (define-syntax-parser define-python-worker
   [(_ name:id action:id
-      mod:bytes
+      mod:bytes arg:bytes ...
       convert-arg:expr convert-result:expr)
    #:with name-action (compound-id #:ctxt #'name #'name "-" #'action)
    #:with name? (compound-id #:ctxt #'name #'name "?")
@@ -169,7 +171,7 @@
          #:constructor-name ctor
          #:name static-name)
        (define launch-name
-         (make-launcher #:who 'launch-name mod ctor))
+         (make-launcher #:who 'launch-name mod ctor '(arg ...)))
        (define convert-arg* convert-arg)
        (define convert-result* convert-result)
        (define (name-action it raw-arg)

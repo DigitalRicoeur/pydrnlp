@@ -11,7 +11,9 @@ This module also writes JSON with a terminating newline,
 though Racket's JSON parser doesn't need this.
 """
 
-import srsly
+#import srsly
+import json
+import sys
 
 def map_json_lines(proc): #, fIn = False, fOut = False):
     """Runs a newline-delimited JSON IO loop,
@@ -19,8 +21,8 @@ def map_json_lines(proc): #, fIn = False, fOut = False):
     """
     #If fIn is False, and by default, input will be read from sys.stdin.
     #If fOut is False, and by default, output will be written to sys.stdout.
-    for jsIn in srsly.read_jsonl("-"):
-        writeJsonLine(proc(jsIn))
+    for jsIn in _inJsonLines():
+        write_json_line(proc(jsIn))
 
 
 def write_json_line(jsOut): #, fOut = False):
@@ -29,16 +31,17 @@ def write_json_line(jsOut): #, fOut = False):
 
     If fOut is False, and by default, output will be written to sys.stdout.
     """
-    srsly.write_jsonl([jsOut], "-")
-    sys.stdout.flush()
+    fOut_ = sys.stdout
+    json.dump(jsOut,fOut_)
+    fOut_.write("\n")
+    fOut_.flush()
 
 
-#def inJsonLines(fIn = False):
-#    """Reads newline-delimited JSON from input and
-#    returns an iterator of parsed values.
-#
-#    If fIn is False, and by default, input will be read from sys.stdin.
-#    """
-#    for line in (fIn if fIn else sys.stdin):
-#        yield json.loads(line)
+def _inJsonLines(fIn = False):
+    """Reads newline-delimited JSON from input and
+    returns an iterator of parsed values.
 
+    If fIn is False, and by default, input will be read from sys.stdin.
+    """
+    for line in (fIn if fIn else sys.stdin):
+        yield json.loads(line)

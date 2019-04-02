@@ -1,13 +1,13 @@
 #lang racket
 
 (require ricoeur/tei
-         pydrnlp
+         "worker.rkt"
          "types.rkt")
 
 (provide (contract-out
           [tokenize-one-doc
            (-> tei-document?
-               #:tokenizer tokenizer?
+               #:tokenizer trends-engine?
                doc+strings?)]
           ))
 
@@ -19,12 +19,12 @@
                     [i (in-naturals)])
     (match-define (base-segment meta body) seg)
     (values (hash-set hsh:i->meta i meta)
-            (cons (tokenize-arg lang i body) t-args)))
+            (cons (json-segment lang i body) t-args)))
   (for/fold/define ([segs null]
                     [doc:lemma/count empty:lemma/count]
                     [doc:lemma/string empty:lemma/string])
-                   ([rslt (in-list (tokenizer-tokenize py t-args))])
-    (match-define (tokenize-result i l-tkns) rslt)
+                   ([rslt (in-list (trends-engine-tokenize py t-args))])
+    (match-define (trends-segment-result i l-tkns) rslt)
     (define meta (hash-ref hsh:i->meta i))
     (for/fold ([seg:lemma/count empty:lemma/count]
                [doc:lemma/string doc:lemma/string]

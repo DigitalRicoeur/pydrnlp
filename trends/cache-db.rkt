@@ -1,13 +1,14 @@
 #lang racket
 
 (require ricoeur/tei
-         pydrnlp
          sql
          db
          racket/runtime-path
          racket/fasl
          data/order
          racket/splicing
+         "../worker.rkt"
+         "worker.rkt"
          "types.rkt"
          "db-query-support.rkt"
          syntax/parse/define)
@@ -284,27 +285,32 @@
             (~optional (~seq #:quiet? quiet?:expr)))
       ...
       body:expr ...+)
-   #'(let ([raw-db (tokenizer-cache-db-connect/raw)])
-       (dynamic-wind
-        void
-        (λ ()
-          (define raw-py
-            (launch-tokenizer (~? (~@ #:quiet? quiet?))))
-          (dynamic-wind
-           void
-           (λ ()
-             (with-db
-              #:db raw-db
-              (call-with-transaction/db
-               (λ ()
-                 (tokenizer-cache-db-initialize! #:tokenizer raw-py)
-                 (call-with-continuation-barrier
-                  (λ ()
-                    (let ([py raw-py]
-                          (~? [db raw-db]))
-                      body ...)))))))
-           (λ () (tokenizer-kill raw-py))))
-        (λ () (disconnect raw-db))))])
+   #'(call-with-tokenizer+cache-db
+      (~? (~@ #:quiet? quiet?))
+      (λ (py (~? db tmp-db))
+        (with-db
+         #:db (~? db tmp-db)
+         body ...)))])
+
+(define (call-with-tokenizer+cache-db proc #:quiet? [quiet? #t])
+  (define raw-db (tokenizer-cache-db-connect/raw))
+  (dynamic-wind
+   void
+   (λ ()
+     (define raw-py
+       (launch-trends-engine #:quiet? quiet?))
+     (dynamic-wind
+      void
+      (λ ()
+        (with-db
+         #:db raw-db
+         (call-with-transaction/db
+          (λ ()
+            (tokenizer-cache-db-initialize! #:tokenizer raw-py)
+            (call-with-continuation-barrier
+             (λ () (proc raw-py raw-db)))))))
+      (λ () (python-worker-kill raw-py))))
+   (λ () (disconnect raw-db))))
 
 (define (tokenizer-cache-db-connect/raw)
   (define db
@@ -335,7 +341,7 @@
        (query-exec/db
         (insert #:into tCacheTokenizerRevision
                 #:set [cacheTokenizerRevisionFasl
-                       ,(s-exp->fasl (tokenizer-revision py))])))]
+                       ,(s-exp->fasl (trends-engine-revision py))])))]
   (define/db (tokenizer-cache-db-clear! #:tokenizer py)
     (call-with-transaction/db
      (λ ()
@@ -373,7 +379,7 @@
   (match (query-list/db
           (select cacheTokenizerRevisionFasl #:from tCacheTokenizerRevision))
     [(list fasl)
-     (equal? (tokenizer-revision py)
+     (equal? (trends-engine-revision py)
              (fasl->s-exp fasl))]
     [_
      #f]))

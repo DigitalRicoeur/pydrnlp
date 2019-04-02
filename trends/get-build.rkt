@@ -1,7 +1,7 @@
 #lang racket
 
 (require ricoeur/tei
-         pydrnlp
+         "worker.rkt"
          "cache-db.rkt"
          "tokenize-one-doc.rkt"
          "types.rkt")

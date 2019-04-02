@@ -18,6 +18,9 @@
 to build tokenized-corpus of English books from scratch:
 cpu time: 73575 real time: 924563 gc time: 4587
 
+w/ spaCy 2.1.0:
+cpu time: 78571 real time: 673000 gc time: 5291
+
 from cached:
 cpu time: 7765 real time: 10329 gc time: 1031
 cpu time: 7702 real time: 10580 gc time: 999

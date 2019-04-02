@@ -47,30 +47,34 @@ def revision():
 
     When the result of tokenizerRevision() changes, any cache is stale.
     """
-    thisModuleRevision = 3
+    thisModuleRevision = 4
     return [thisModuleRevision,
             pydrnlp.stop_words.revision(),
             pydrnlp.language.revision()]
 
 
-def analyze_all(jsIn):
+
+
+def analyze_all(jsIn, verbose=False):
     """Tokenizes JsIn. **TODO: document this.**"""
     ret = []
     for langStr, segs in jsIn.items():
         nlp = pydrnlp.language.get(langStr)
-        ret.extend(_languageTokenizeSegments(nlp, segs))
+        ret.extend(_analyze_language_segments(nlp, segs, verbose=verbose))
     return ret
 
 
-def _languageTokenizeSegments(nlp, segs):
+def _analyze_language_segments(nlp, segs, verbose=False):
     """Tokenizes a Listof[JsInSegment] segs using the language nlp."""
     args = ((jsInSeg["body"], jsInSeg["key"]) for jsInSeg in segs)
     for (doc, key) in nlp.pipe(args, as_tuples = True):
         yield {"key": key,
-               "tokenized": list(_languageDocToListofJsToken(nlp, doc))}
+               "tokenized": list(_analyze_spacy_doc(nlp,
+                                                    doc,
+                                                    verbose=verbose))}
 
         
-def _languageDocToListofJsToken(nlp, doc):
+def _analyze_spacy_doc(nlp, doc, verbose=False):
     """Returns an iterator of JSON-convertable token dictionaries.
     
     Tokens which do not satisfy 
@@ -84,9 +88,20 @@ def _languageDocToListofJsToken(nlp, doc):
     """
     for token in doc:
         if tokenShouldUseForLang(token, nlp):
-            yield {"lemma":token.lemma_ ,
-                   "text":token.text}
+            yield _token_to_json(token, verbose=verbose)
 
+            
+def _token_to_json(token, verbose=False):
+    if verbose:
+        return {"lemma": token.lemma_ ,
+                "pos": token.pos_,
+                "tag": token.tag_,
+                "norm": token.norm_,
+                "is_oov": token.is_oov, # oov = out of vocabulary
+                "text": token.text}
+    else:
+        return {"lemma": token.lemma_ ,
+                "text": token.text}
             
 # tokenShouldUseForLang : Token Language -> bool
 def tokenShouldUseForLang(token, lang):
@@ -105,16 +120,19 @@ def tokenShouldUseForLang(token, lang):
     """
     if (token.is_punct or
         token.is_space or
+        token.is_stop or
         (token.lemma_ == "-PRON-")): # "-PRON-" sometimes classed as "ADJ"
         return False
     elif (token.pos_ not in _interesting_pos_strings):
         return False
-    elif tokenAnyIsStopForLanguage(token, lang):
+    elif (token.lemma_ in lang.Defaults.stop_words):
         return False
     else:
         return True
-    
 
+    
+# functional words:    
+# prepositions, conjunctions, modal & auxiliary verbs, determinatives
 _interesting_pos_strings = frozenset({
     "ADJ", # adjective
     "ADV", # adverb
@@ -127,8 +145,14 @@ _interesting_pos_strings = frozenset({
 
 
 if __name__ == "__main__":
+    import argparse
     from pydrnlp.jsonio import map_json_lines, write_json_line
+    parser = argparse.ArgumentParser(description="engine for Trends tool")
+    parser.add_argument("--verbose",
+                        action="store_true",
+                        help="include debugging details in JSON output")
+    args = parser.parse_args()
     write_json_line(revision())
-    map_json_lines(analyze_all)
+    map_json_lines(lambda js: analyze_all(js, verbose=args.verbose))
 
 
