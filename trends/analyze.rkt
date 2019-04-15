@@ -9,30 +9,23 @@
 
 
 (module+ main
+  (define-local-member-name trends-corpus-tag-method)
+  (define trends-corpus<%>
+    (interface ()
+      trends-corpus-tag-method
+      get-trends-demo-term-table))
   (define trends-corpus-mixin
-    (let* ([initialize-tokens-method-key (generate-member-key)]
-           [pre-mixin (make-corpus-mixin initialize-tokens-method-key)])
-      (define-member-name initialize-tokens initialize-tokens-method-key)
-      (define trends-corpus<%>
-        (interface ()
-          get-trends-demo-term-table))
-      (λ (%)
-        (class* (pre-mixin %) [trends-corpus<%>]
-          (inherit get-checksum-table)
-          (define ch (make-channel))
-          (define pr:tokenized
-            (delay/thread
-             ;; We need to block waiting for docs before
-             ;; we evaluate (get-checksum-table) or there
-             ;; will be a use-before-definition error.
-             (make-tokenizer-demo-data (sync ch))))
-          (super-new)
-          (define/override-final (initialize-tokens docs)
-            (channel-put ch docs))
-          (define/public-final (get-trends-demo-term-table term->href)
-            (list '("href" "text" "%" "data")
-                  (for/list ([row (in-list (force pr:tokenized))])
-                    (cons (term->href (car row)) row))))))))
+    (corpus-mixin [] [trends-corpus<%>]
+      (define pr:tokenized
+        (delay/thread
+         (make-tokenizer-demo-data (sync (super-docs-evt)))))
+      (super-new)
+      (define/public-final (get-trends-demo-term-table term->href)
+        (list '("href" "text" "%" "data")
+              (for/list ([row (in-list (force pr:tokenized))])
+                (cons (term->href (car row)) row))))
+      (define/public-final (trends-corpus-tag-method)
+        (void))))
   (define c
     (new (trends-corpus-mixin directory-corpus%)
          [path "/Users/philip/code/ricoeur/texts/TEI/"]))

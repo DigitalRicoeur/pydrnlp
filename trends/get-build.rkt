@@ -15,6 +15,7 @@
 (define (get/build-tokenized-corpus docs)
   (define checksum-table (tei-document-set->checksum-table docs))
   (with-tokenizer+cache-db
+   #:quiet? #f
    #:tokenizer py
    (or (try-select-cached-tokenized-corpus #:docs docs
                                            #:checksum-table checksum-table)

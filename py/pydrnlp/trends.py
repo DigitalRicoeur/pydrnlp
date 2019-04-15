@@ -30,7 +30,7 @@ Maybe preserving the ordering within the segment is good enough.
 """
 
 import pydrnlp.language
-import pydrnlp.stop_words
+import regex
 
 # revision : -> RevisionJsexpr
 def revision():
@@ -47,9 +47,8 @@ def revision():
 
     When the result of tokenizerRevision() changes, any cache is stale.
     """
-    thisModuleRevision = 4
+    thisModuleRevision = 5
     return [thisModuleRevision,
-            pydrnlp.stop_words.revision(),
             pydrnlp.language.revision()]
 
 
@@ -108,6 +107,8 @@ def tokenShouldUseForLang(token, lang):
     """Recognizes tokens which should be included in counting
     with respect to the given `spacy.language.Language` instance.
 
+    TODO add minimum num of alphabetic characters.
+
     Some kinds of tokens which should be excluded:
 
     - punctuation;
@@ -120,28 +121,41 @@ def tokenShouldUseForLang(token, lang):
     """
     if (token.is_punct or
         token.is_space or
-        token.is_stop or
+        token.is_stop or # token.lemma_ checked below
         (token.lemma_ == "-PRON-")): # "-PRON-" sometimes classed as "ADJ"
         return False
     elif (token.pos_ not in _interesting_pos_strings):
         return False
     elif (token.lemma_ in lang.Defaults.stop_words):
+        # token.is_stop checked above
+        return False
+    elif (not check_enough_alphabetic_chars(token.lemma_)):
         return False
     else:
         return True
 
+_min_alphabetic_chars = 3 # must be positive
+_char_alphabetic_regex = regex.compile("\\p{Alphabetic=Yes}")
+
+# check_enough_alphabetic_chars : str -> bool
+# Returns True IFF its arg has at least _min_alphabetic_chars
+# characters that match _char_alphabetic_regex.
+def check_enough_alphabetic_chars(lemma):
+    if len(lemma) < _min_alphabetic_chars:
+        return False
+    else:
+        count = 0
+        for mtch in _char_alphabetic_regex.finditer(lemma):
+            count = 1 + count
+            if count == _min_alphabetic_chars:
+                return True
+        return False
+
     
-# functional words:    
-# prepositions, conjunctions, modal & auxiliary verbs, determinatives
 _interesting_pos_strings = frozenset({
-    "ADJ", # adjective
-    "ADV", # adverb
-    "INTJ", # interjection
-    "NOUN", # noun
-    "PROPN", # proper noun
-    "VERB", # verb
-    "X" # other
-    })
+    "NOUN",
+    "PROPN" 
+})
 
 
 if __name__ == "__main__":
