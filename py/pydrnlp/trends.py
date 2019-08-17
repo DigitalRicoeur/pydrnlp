@@ -107,8 +107,6 @@ def tokenShouldUseForLang(token, lang):
     """Recognizes tokens which should be included in counting
     with respect to the given `spacy.language.Language` instance.
 
-    TODO add minimum num of alphabetic characters.
-
     Some kinds of tokens which should be excluded:
 
     - punctuation;

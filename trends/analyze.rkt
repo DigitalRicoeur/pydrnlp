@@ -16,14 +16,20 @@
       get-trends-demo-term-table))
   (define trends-corpus-mixin
     (corpus-mixin [] [trends-corpus<%>]
+      (define/private (term->href term)
+        "/todo")
       (define pr:tokenized
         (delay/thread
-         (make-tokenizer-demo-data (sync (super-docs-evt)))))
+         (define-values [all-years-with-titles listof-text+%+sparse-data]
+           (make-tokenizer-demo-data (sync (super-docs-evt))))
+         (hasheq 'years-with-titles all-years-with-titles
+                 'terms
+                 (list '("href" "text" "%" "sparse-data")
+                       (for/list ([row (in-list listof-text+%+sparse-data)])
+                         (cons (term->href (car row)) row))))))
       (super-new)
-      (define/public-final (get-trends-demo-term-table term->href)
-        (list '("href" "text" "%" "data")
-              (for/list ([row (in-list (force pr:tokenized))])
-                (cons (term->href (car row)) row))))
+      (define/public-final (get-trends-demo-term-table [term->href void])
+        (force pr:tokenized))
       (define/public-final (trends-corpus-tag-method)
         (void))))
   (define c
@@ -31,10 +37,12 @@
          [path "/Users/philip/code/ricoeur/texts/TEI/"]))
   (write-json (send c get-trends-demo-term-table (λ (_) "/todo"))))
 
+
+
 (define (compute-percent count total)
   (exact->inexact (* 100 (/ count total))))
 
-(struct year-data (year total lemma/count)
+(struct year-data (year total titles lemma/count)
   #:transparent)
 
 (define (instance-orig-publication-year it)
@@ -49,7 +57,10 @@
              (map tokenized-document-lemma/count grp)))
     (year-data (instance-orig-publication-year (car grp))
                (total:lemma/count l/c)
+               (sort (map instance-title grp) title<?)
                l/c)))
+
+
 
 (define (make-tokenizer-demo-data all-docs)
   (define t-c
@@ -61,47 +72,30 @@
   (define corpus:lemma/string (tokenized-corpus-lemma/string t-c))
   (define corpus:lemma/count (tokenized-corpus-lemma/count t-c))
   (define grand-total (total:lemma/count corpus:lemma/count))
-  (define sorted
-    (sort #:key cdr (hash->list (lemma/count-hsh corpus:lemma/count)) >))
   (define l-year-data
-    (tokenized-corpus->l-year-data t-c))
-  (define initial-lemma-year-numbers
-    (for/list ([pr (in-list sorted)])
-      (define lemma (car pr))
-      (filter-map (match-lambda
-                    [(year-data year total lemma/count)
-                     (define count (lemma/count-ref lemma/count lemma))
-                     (and count (cons year (cons count (compute-percent count total))))])
-                  l-year-data)))
-  (for*/fold/define ([first-year #f]
-                     [last-year #f])
-                    ([lst (in-list initial-lemma-year-numbers)]
-                     [pr (in-list lst)]
-                     [yr (in-value (car pr))])
-    (values (if first-year (min yr first-year) yr)
-            (if last-year (max yr last-year) yr)))
-  (define hsh:year->total
-    (for/hasheqv ([y-d (in-list l-year-data)])
-      (values (year-data-year y-d)
-              (year-data-total y-d))))
-  (define stop-year (add1 last-year))
-  (define full-lemma-year-numbers
-    (for/list ([init-nums (in-list initial-lemma-year-numbers)])
-      (for*/list ([yr (in-range first-year stop-year)]
-                  [js (in-value
-                       (cons yr (match (assv yr init-nums)
-                                  [(cons _ (cons count %))
-                                   (list %)]
-                                  [#f
-                                   '(0)])))])
-        js)))
-  (for/list ([pr (in-list sorted)]
-             [l-data (in-list full-lemma-year-numbers)])
-    (match-define (cons lemma total) pr)
-    (define text (lemma/string-ref corpus:lemma/string lemma))
-    (list #;'text text
-          #;'% (compute-percent total grand-total)
-          #;'data l-data)))
+    (sort (tokenized-corpus->l-year-data t-c) #:key year-data-year <))
+  (define all-years-with-titles
+    (map (match-lambda 
+           [(year-data year _ titles _)
+            (list year titles)])
+         l-year-data))
+  (define listof-text+%+sparse-data
+    (for/list ([pr (in-list 
+                    (sort (hash->list (lemma/count-hsh corpus:lemma/count))
+                          #:key cdr >))])
+      (match-define (cons lemma total) pr)
+      (define text (lemma/string-ref corpus:lemma/string lemma))
+      (define % (compute-percent total grand-total))
+      (define sparse-data
+        (for*/list ([y-d (in-list l-year-data)]
+                    [count (in-value
+                            (lemma/count-ref (year-data-lemma/count y-d) lemma))]
+                    #:when count)
+          (match-define (year-data year total _ _) y-d)
+          (list year (compute-percent count total))))
+      (list text % sparse-data)))
+  (values all-years-with-titles
+          listof-text+%+sparse-data))
 
 
 

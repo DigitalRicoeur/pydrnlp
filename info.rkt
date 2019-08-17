@@ -2,7 +2,7 @@
 
 (define collection "pydrnlp")
 (define pkg-desc "Racket interface to Python NLP library for Digital Ricoeur")
-(define version "0.0.1")
+(define version "0.0.2")
 (define pkg-authors '(philip))
 
 (define install-collection "conda.rkt")
@@ -23,7 +23,7 @@
                ("db-lib" #:version "1.4")
                ("sql" #:version "1.5")
                "data-lib"
-               ("ricoeur-tei-utils" #:version "0.5.7")
+               ("ricoeur-tei-utils" #:version "0.5.8")
                "gregor-lib"))
 
 (define build-deps '("scribble-lib"
