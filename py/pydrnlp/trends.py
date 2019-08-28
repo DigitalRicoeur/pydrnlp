@@ -30,6 +30,7 @@ Maybe preserving the ordering within the segment is good enough.
 """
 
 import pydrnlp.language
+import pydrnlp.jsonio
 import regex
 
 # revision : -> RevisionJsexpr
@@ -47,7 +48,7 @@ def revision():
 
     When the result of tokenizerRevision() changes, any cache is stale.
     """
-    thisModuleRevision = 5
+    thisModuleRevision = 6
     return [thisModuleRevision,
             pydrnlp.language.revision()]
 
@@ -72,11 +73,11 @@ def _analyze_language_segments(nlp, segs, verbose=False):
                                                     doc,
                                                     verbose=verbose))}
 
-        
+
 def _analyze_spacy_doc(nlp, doc, verbose=False):
     """Returns an iterator of JSON-convertable token dictionaries.
-    
-    Tokens which do not satisfy 
+
+    Tokens which do not satisfy
     `pydrnlp.tokenizer.usetoken.tokenShouldUseForLang`
     with this language are discarded.
 
@@ -89,7 +90,7 @@ def _analyze_spacy_doc(nlp, doc, verbose=False):
         if tokenShouldUseForLang(token, nlp):
             yield _token_to_json(token, verbose=verbose)
 
-            
+
 def _token_to_json(token, verbose=False):
     if verbose:
         return {"lemma": token.lemma_ ,
@@ -101,7 +102,7 @@ def _token_to_json(token, verbose=False):
     else:
         return {"lemma": token.lemma_ ,
                 "text": token.text}
-            
+
 # tokenShouldUseForLang : Token Language -> bool
 def tokenShouldUseForLang(token, lang):
     """Recognizes tokens which should be included in counting
@@ -149,22 +150,28 @@ def check_enough_alphabetic_chars(lemma):
                 return True
         return False
 
-    
+
 _interesting_pos_strings = frozenset({
     "NOUN",
-    "PROPN" 
+    "PROPN"
 })
+
+
+# FIXME use MultiprocessWorker when fixed
+class TrendsWorker(pydrnlp.jsonio.Worker):
+    def __init__(self, verbose=False):
+        self.verbose = verbose
+    def prelude(self):
+        return [ revision() ]
+    def each(self, js):
+        return analyze_all(js, verbose=self.verbose)
 
 
 if __name__ == "__main__":
     import argparse
-    from pydrnlp.jsonio import map_json_lines, write_json_line
     parser = argparse.ArgumentParser(description="engine for Trends tool")
     parser.add_argument("--verbose",
                         action="store_true",
                         help="include debugging details in JSON output")
     args = parser.parse_args()
-    write_json_line(revision())
-    map_json_lines(lambda js: analyze_all(js, verbose=args.verbose))
-
-
+    TrendsWorker(verbose=args.verbose).start()

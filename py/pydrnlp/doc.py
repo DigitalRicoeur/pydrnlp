@@ -245,18 +245,14 @@ def _docParameters(sig):
 
 
 if __name__ == "__main__":
-    def show_usage_help():
-        sys.stdout.write("TODO: write a usage help message.\n")
-        pass
-    if len(sys.argv) != 2:
-        show_usage_help()
-        exit(1)
-    elif ((sys.argv[1] == "-h") or
-          (sys.argv[1] == "--help")):
-        show_usage_help()
-        exit(0)
-    else:
-        json.dump(list(map(docModpath,json.loads(sys.argv[1]))),
-                  sys.stdout)
-        sys.stdout.write("\n")
-        exit(0)
+    import argparse
+    desc = "generate JSON from module docstrings"
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument("json_modpaths",
+                        metavar="modpaths",
+                        help="JSON array of Python module paths")
+    args = parser.parse_args()
+    json.dump(list(map(docModpath,json.loads(args.json_modpaths))),
+              sys.stdout)
+    sys.stdout.write("\n")
+    exit(0)

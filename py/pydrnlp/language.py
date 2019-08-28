@@ -34,7 +34,7 @@ def revision():
     # logic of this module
     lib_revision = 0
     # update spacy_revision on substantive updates to spaCy
-    spacy_revision = "2.1.3"
+    spacy_revision = "2.1.8"
     return [lib_revision,
             spacy_revision,
             _model_revisions]
