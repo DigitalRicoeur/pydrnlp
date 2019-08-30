@@ -36,14 +36,10 @@ def threshold(pseudocounts):
     ys = density(xs)
     np.seterr(divide='ignore')
     peaks = signal.find_peaks_cwt(-ys, np.array([0.001, 0.01, 0.1]))
-    #if peaks.any():
-    #    return min(xs[peaks])
-    #else:
-    #    return 0
-    threshold1 = 0
     if peaks.any():
-        threshold1 = min(xs[peaks])
-    return(threshold1)
+        return min(xs[peaks])
+    else:
+        return 0
 
 
 def demo():
