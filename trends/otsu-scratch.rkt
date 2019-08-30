@@ -1,5 +1,14 @@
 #lang racket
 
+(require syntax/parse/define)
+
+(define-for-syntax (unlet-var-transformer stx)
+  ;; include outer form in error?
+  (raise-syntax-error #f "reference to unlet variable" stx))
+
+(define-simple-macro (unlet [name:id ...] body:expr ...+)
+  (let-syntax ([name unlet-var-transformer] ...) body ...))
+
 (define empty-statistics null)
 (define (update-statistics stats e w)
   (cons (cons e w) stats))
@@ -16,26 +25,28 @@
                [stats (update-statistics stats e w)]
                [bias-mode #true] ;; correct for frequency weights
                [variance (statistics-variance stats #:bias bias-mode)])
-  (stats-accum stats (cons variance lst))))
+    (stats-accum stats (cons variance lst))))
+(define (in-stats-accum-variances acc)
+  (stats-accum-lst acc))
 
 (define elements '(4 3 2 1))
-(define weights '(a b c d))
+(define weights '(94 93 92 91))
 
-
-(let update-high/init-low ([high-relevance-acc empty-stats-accum]
-                           [elements elements]
-                           [weights weights])
+(let prep-high/init-low
+  ([high-relevance-acc empty-stats-accum]
+   [elements elements]
+   [weights weights]
+   [low-kont in-stats-accum-variances])
   (match* {elements weights}
     [{(cons e elements) (cons w weights)}
-     (let-values ([{low-relevance-acc high-relevance-acc}
-                   (update-high/init-low
-                    (update-stats-accum high-relevance-acc e w)
-                    elements
-                    weights)])
-       (values (update-stats-accum low-relevance-acc e w)
-               high-relevance-acc))]
+     (prep-high/init-low
+      (update-stats-accum high-relevance-acc e w)
+      elements
+      weights
+      (λ (low-relevance-acc)
+        (low-kont
+         (update-stats-accum low-relevance-acc e w))))]
     [{'() '()}
-     (values empty-stats-accum
-             high-relevance-acc)]))
-
-
+     (vector-immutable
+      (in-stats-accum-variances high-relevance-acc)
+      (low-kont empty-stats-accum))]))
