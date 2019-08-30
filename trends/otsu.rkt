@@ -65,7 +65,8 @@
          #:old-high-relevance high-relevance-stats
          elements
          weights))))
-     
+
+
 (: sort-and-weight-elements (-> (Listof Element)
                                 (Values (Listof Element)
                                         (Listof Weight))))
@@ -73,3 +74,16 @@
   (count-samples (sort unsorted >)))
 
 
+
+(: calculate-intra-class-variance/nan
+   (-> statistics (Listof Element) (Listof Weight) Variance/Nan))
+(define (calculate-intra-class-variance/nan high-relevance-stats elements weights)
+  (define bias-mode #true)
+  (define low-relevance-stats
+    ;; statistics-variance uses more float specialization than variance
+    (for/fold ([low-relevance-stats empty-statistics])
+              ([e (in-list elements)]
+               [w (in-list weights)])
+      ;; like update-statistics* but avoids generic sequence dispatch
+      
+                                          
