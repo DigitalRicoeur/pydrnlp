@@ -12,6 +12,17 @@
          union:lemma/string
          update:lemma/string)
 
+;; TODO: is there a fancy data structure that might make
+;; the union:lemma/* functions better?
+;; (& be directly iterable?)
+
+;; vid.
+;;  - "Batched Rebuilding" Okasaki 8.1 p99
+;;  - "Structural Abstraction" Okasaki 10.2 p151
+;;      "typically used to extend an implementation of collections
+;;      ... with an efficient join function"
+
+
 ;; Using typed wrappers for lemma/count and lemma/string
 ;; should avoid overhead for contract checks.
 

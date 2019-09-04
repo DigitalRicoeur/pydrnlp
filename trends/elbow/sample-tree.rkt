@@ -6,13 +6,15 @@
          sample-tree-iterate-descending
          sample-tree-iterate-ascending)
 
-(require math/array
-         (submod racket/performance-hint begin-encourage-inline))
+(require (submod racket/performance-hint begin-encourage-inline))
 
 (define-type Sample-Tree (U #f sample-tree-node))
 
 ;; TODO is there an alternative data structure that would
 ;;   be directly iterable w/o intermediate allocation?
+
+;; Red-Black (self-balancing) might help if insertion
+;; tends to be ordered (vid. Okasaki 3.3 p24).
 
 (struct sample-tree-node
   ([k : Positive-Integer]
@@ -23,6 +25,10 @@
 
 (: sample-tree-add (-> Sample-Tree Positive-Integer sample-tree-node))
 (define (sample-tree-add it k)
+  ;; TODO: (Okasaki p14 ex2.2)
+  ;; Current worst-case is (* 2 depth) comparisons;
+  ;; can do worst-case (add1 depth) instead by remembering
+  ;; possibly-equal element and checking = only on hitting bottom.
   (cond
     [it
      (define node-k (sample-tree-node-k it))

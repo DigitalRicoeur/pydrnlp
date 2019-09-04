@@ -2,6 +2,9 @@
 
 (provide threshold/otsu)
 
+;; Ported by Philip McGrath
+;; from the Python implementation by James Broda.
+
 (require math/statistics
          math/array
          math/flonum
@@ -30,7 +33,8 @@
         (values (list->array elements)
                 (list->array weights))))
     (define e*w-arr : (Array Positive-Float)
-      (array-strict ;; ???
+      ;; strict because it is forced for grand-total anyway
+      (array-strict
        (array-map (λ ([e : Positive-Integer]
                       [w : Positive-Integer])
                     (fl (* e w)))
