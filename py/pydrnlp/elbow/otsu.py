@@ -11,7 +11,8 @@ def threshold(pseudocounts):
     high_relevance_probability = sum(high_relevance_slice)/sum_psc
     low_relevance_probability = 1 - high_relevance_probability
     ###
-
+    def relev_class_calc(
+    
 def _slice_variance(s):
     return np.var(s) if len(s) else 0
 

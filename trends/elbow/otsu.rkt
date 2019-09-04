@@ -4,7 +4,6 @@
 
 (require math/statistics
          math/array
-         racket/flonum
          math/flonum
          "sample-tree.rkt")
 
@@ -31,7 +30,7 @@
         (values (list->array elements)
                 (list->array weights))))
     (define e*w-arr : (Array Positive-Float)
-      (array-strict
+      (array-strict ;; ???
        (array-map (λ ([e : Positive-Integer]
                       [w : Positive-Integer])
                     (fl (* e w)))
@@ -43,29 +42,23 @@
     (parameterize ([array-strictness disable-lazyness?])
       (define threshold-arr
         (array-drop-last elements))
-      (define-values [high-relevance-class-var-arr
-                      high-relevance-class-probability-arr]
-        (values (arrays-foldlmap-variance threshold-arr (array-drop-last weights))
-                (make-probability-array grand-total (array-drop-last e*w-arr))))
-      (define-values [low-relevance-class-var-arr
-                      low-relevance-class-probability-arr]
-        (let ([elements (array-reverse (array-rest elements))]
-              [weights (array-reverse (array-rest weights))]
-              [e*w-arr (array-reverse (array-rest e*w-arr))])
-          (values (array-reverse 
-                   (arrays-foldlmap-variance elements weights))
-                  (array-reverse
-                   (make-probability-array grand-total e*w-arr)))))
-      (define intra-class-variance-arr : (Array Float)
-        (array-map (λ ([high-v : Float]
-                       [high-p : Float]
-                       [low-v : Float]
-                       [low-p : Float])
-                     (+ (* high-v high-p) (* low-v low-p)))
-                   high-relevance-class-var-arr
-                   high-relevance-class-probability-arr
-                   low-relevance-class-var-arr
-                   low-relevance-class-probability-arr))
+      (define intra-class-variance-arr : (Array Float) ;; Nonnegative-Float
+        (let ([high-relevance-class-arr
+               (make-relevance-class-array
+                threshold-arr
+                (array-drop-last weights)
+                (array-drop-last e*w-arr)
+                grand-total)]
+              [low-relevance-class-arr
+               (array-reverse
+                (make-relevance-class-array
+                 (array-reverse (array-rest elements))
+                 (array-reverse (array-rest weights))
+                 (array-reverse (array-rest e*w-arr))
+                 grand-total))])
+          (inline-array-map fl+
+                            high-relevance-class-arr
+                            low-relevance-class-arr)))
       (define-values [min-variance best-threshold]
         (for/fold ([old-variance : Float +inf.0] ;; Nonnegative-Float
                    [old-threshold : Positive-Integer 1])
@@ -87,84 +80,57 @@
 ;;  ;; ... which is a problem when minimizing variance
 ;;  (U Positive-Float Float-Zero))
 
+(define-type __make-relevance-class-array_t
+  (-> (Array Positive-Integer)
+      (Array Positive-Integer)
+      (Array Positive-Float)
+      Positive-Float
+      (Array Float))) ;; Nonnegative-Float
+(: make-relevance-class-array __make-relevance-class-array_t)
+(define make-relevance-class-array
+  (let ()
+    (: wrap (-> Indexes
+                (-> statistics Nonnegative-Float Indexes
+                    (values statistics Positive-Float))
+                (-> statistics Positive-Float Nonnegative-Float)
+                (Array Float)))
+    (define (wrap shape get-this ->r-c-weighted-variance)
+      (define ret
+        (array->flarray (make-array shape 0.0)))
+      (define data
+        (flarray-data ret))
+      (for/fold ([old-stats : statistics empty-statistics]
+                 [old-running-total : Nonnegative-Float 0.0])
+                ([js : Indexes (in-array-indexes shape)])
+        (: stats statistics)
+        (: running-total Positive-Float)
+        (define-values [stats running-total]
+          (get-this stats running-total js))
+        (flvector-set! data
+                       (vector-ref js 0)
+                       (->r-c-weighted-variance stats running-total))
+        (values stats running-total))
+      ret)
+    (: make-relevance-class-array __make-relevance-class-array_t)
+    (define (make-relevance-class-array e-arr w-arr e*w-arr grand-total)
+      (wrap (array-shape e-arr)
+            (λ ([old-stats : statistics]
+                [old-running-total : Nonnegative-Float]
+                [js : Indexes])
+              : (values statistics Positive-Float)
+              (values (update-statistics old-stats
+                                         (array-ref e-arr js)
+                                         (array-ref w-arr js))
+                      (+ old-running-total (array-ref e*w-arr js))))
+            (λ ([stats : statistics]
+                [running-total : Positive-Float])
+              : Nonnegative-Float
+              (define bias-mode #true) ;; correct for frequency weights
+              (* (statistics-variance stats #:bias bias-mode)
+                 (ann (/ running-total grand-total) Nonnegative-Float)))))
+    make-relevance-class-array))
 
-(: arrays-foldlmap
-   (∀ (A B) (case->
-             (-> (Array A) (Array A) B (-> A A B B) (Array B))
-             (-> (Array A) B (-> A B B) (Array B)))))
-(define arrays-foldlmap
-  (let ([wrap
-         : (∀ (A B) (-> (Array A) B (-> Indexes B B) (Array B)))
-         (λ #:∀ (A B) (xs init proc*)
-           ;; like array-lazy, but avoids promises
-           (define len : Index (array-size xs))
-           (define shape : Indexes (array-shape xs))
-           (define vec : (Mutable-Vectorof B) (make-vector len init))
-           (for/fold ([prev : B init])
-                     ([js (in-array-indexes shape)])
-             (define this (proc* js prev))
-             (vector-set! vec (vector-ref js 0) this)
-             this)
-           (build-simple-array
-            shape
-            (λ ([js : Indexes])
-              (vector-ref vec (vector-ref js 0)))))])
-    (case-lambda
-      #:∀ (A B)
-      [(xs ys init proc)
-       (wrap xs init (λ ([js : Indexes]
-                         [prev : B])
-                       (proc (array-ref xs js)
-                             (array-ref ys js)
-                             prev)))]
-      [(xs init proc)
-       (wrap xs init (λ ([js : Indexes]
-                         [prev : B])
-                       (proc (array-ref xs js)
-                             prev)))])))
 
-
-(: fold/build-flarray (∀ (A) (-> Indexes A (-> A Indexes A) (-> A Flonum) FlArray)))
-(define #:∀ (A) (fold/build-flarray shape init get-this this->flonum)
-  (define ret
-    (array->flarray (make-array shape 0.0)))
-  (define data
-    (flarray-data ret))
-  (for/fold ([prev : A init])
-            ([js : Indexes (in-array-indexes shape)])
-    (define this (get-this prev js))
-    (flvector-set! data (vector-ref js 0) (this->flonum this))
-    this)
-  ret)
-
-(: make-probability-array (-> Positive-Float
-                                  (Array Positive-Float)
-                                  (Array Float))) ;; Nonnegative-Float
-(define (make-probability-array grand-total e*w-arr)
-  ;; length guaranteed elsewhere
-  (let ([e*w0 : Positive-Float (array-ref e*w-arr #(0))] 
-        [e*w-arr (array-rest e*w-arr)])
-  (fold/build-flarray
-   (array-shape e*w-arr)
-   e*w0
-   (λ ([prev : Positive-Float] [js : Indexes]) : Positive-Float
-     (+ prev (array-ref e*w-arr js)))
-   (λ ([running-total : Positive-Float]) : Nonnegative-Float
-     (/ running-total grand-total)))))
-        
-(: arrays-foldlmap-variance (-> (Array Positive-Integer)
-                                (Array Positive-Integer)
-                                (Array Float))) ;; Nonnegative-Float
-(define (arrays-foldlmap-variance elements weights)
-  (fold/build-flarray
-   (array-shape elements)
-   empty-statistics
-   (λ ([prev : statistics]
-       [js : Indexes])
-     (update-statistics prev (array-ref elements js) (array-ref weights js)))
-   (λ ([stats : statistics]) : Nonnegative-Float
-     (define bias-mode #true) ;; correct for frequency weights
-     (statistics-variance stats #:bias bias-mode))))
 
         
 (: make-slicer (-> (Listof Slice-Spec) (∀ (A) (-> (Array A) (Array A)))))
