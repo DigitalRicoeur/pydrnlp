@@ -1,6 +1,5 @@
 #lang typed/racket
 
-#;
 (provide sample-tree-threshold/kde)
 
 (require "sample-tree.rkt"
@@ -11,8 +10,11 @@
 (module+ test
   (require typed/rackunit))
 
-
-
+(define max-attempts : Positive-Index
+  1)
+(define bandwidth-scale-factor : Positive-Flonum
+  (assert 0.9
+          flprobability?))
 
 (: sample-tree-threshold/kde (-> Sample-Tree Positive-Integer))
 (define (sample-tree-threshold/kde tree)
@@ -32,7 +34,8 @@
                            ;; ??? this seems like a lot
                            (* 20 (sample-tree-sequence-length tree))))
      (define bandwidth (sample-tree->init-bandwidth/scott tree))
-     (let loop : Positive-Integer ([bandwidth : Nonnegative-Flonum bandwidth])
+     (let loop : Positive-Integer ([bandwidth : Nonnegative-Flonum bandwidth]
+                                   [attempt : Positive-Fixnum 1])
        (define kde (bandwidth->kde bandwidth))
        (define peaks (find-relative-minima (flarray-map kde test-xs)))
        (cond
@@ -41,11 +44,13 @@
             (array-all-min (array-indexes-ref test-xs peaks)))
           ;; an int x such that (>= x fl-threshold) will also work with:
           (max 1 (exact-ceiling fl-threshold))]
+         [(< attempt max-attempts)
+          (loop (* bandwidth bandwidth-scale-factor)
+                (add1 attempt))]
          [else
+          ;; give up
+          1]))]))
 
-          (error 'TODO)
-          
-          ]))]))
 
 (: sample-tree->init-bandwidth/scott (-> Sample-Tree Nonnegative-Flonum))
 (define (sample-tree->init-bandwidth/scott tree)
@@ -94,5 +99,43 @@
   ;; comparator=np.less, axis=0, order=1, mode='clip'
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; 'clip' mode means ref out of edges of array is treated as first/last element
-  (error 'TODO)
-  )
+  (define size (array-size data))
+  (cond
+    [(= 0 size) ;; proves (sub1 size) is an index
+     (array #[])]
+    [else
+     (define shape : Indexes
+       (vector-immutable size))
+     (define (shift [column-transform : (-> Index Index)]) : (Array Flonum)
+       (array-transform data shape (λ ([v : Indexes])
+                                     (vector-immutable
+                                      (column-transform (vector-ref v 0))))))
+     (define last-col : Index
+       (sub1 size))
+     (define plus : (Array Flonum)
+       (shift (λ ([col : Index])
+                (define col* (add1 col))
+                (if (< col* last-col) col* last-col))))
+     (define minus : (Array Flonum)
+       (shift (λ ([col : Index])
+                (if (= 0 col) 0 (sub1 col)))))
+     (define mask : (Array (U #f Indexes)) 
+       (array-and
+        (array-map fl< data plus)
+        (array-map fl< data minus)
+        (indexes-array shape)))
+     (list-array->array
+      (array-axis-reduce
+       mask 0
+       (λ ([len : Index][ref : (-> Integer (U #f Indexes))])
+         (for*/fold ([acc : (Listof Indexes) null])
+                    ([i (in-range (sub1 len) -1 -1)]
+                     [v (in-value (ref i))]
+                     #:when v)
+           (cons v acc)))))]))
+
+(module+ test
+  (check-true
+   (equal? (find-relative-minima (array #[3.0 2.0 1.0 2.0 3.0]))
+           (array #['#(2)]))))
+

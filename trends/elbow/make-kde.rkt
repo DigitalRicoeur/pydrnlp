@@ -9,16 +9,6 @@
          math/flonum
          "sample-tree.rkt")
 
-#|
-(define-struct/exec kde ([proc : (-> Flonum Flonum)]
-                         [x-min : (U Flonum #f)]
-                         [x-max : (U Flonum #f)])
-  [(λ ([this : Kde][x : Flonum])
-     ((kde-proc this) x))
-   : (-> Kde Flonum Flonum)]
-  #:type-name Kde)
-|#
-
 (: sample-tree->bandwidth->kde (-> Sample-Tree (-> Nonnegative-Flonum
                                                    (-> Flonum Flonum))))
 (define (sample-tree->bandwidth->kde this)
@@ -85,9 +75,7 @@
   ;; assume sorted ASCENDING and same length
   (cond
     [(= 0 (flvector-length xs))
-     (λ (h)
-       ;(kde (λ (y) 0.0) #f #f)
-       (λ (y) 0.0))]
+     (λ (h) (λ (y) 0.0))]
     [else
      (let* ([ws (let ([sum-ws (flvector-sum ws)])
                   (inline-flvector-map
@@ -123,5 +111,4 @@
              (if (< x-min y x-max)
                  (* c (kde/windowed y))
                  0.0)))
-         ;(kde f x-min x-max)
          f))]))

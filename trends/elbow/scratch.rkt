@@ -1,7 +1,6 @@
 #lang racket
 
-(require math/array
-         (only-in plot/utils kde))
+(require math/array)
 
 #;
 (define (find-peaks-cwt src-arr widths-lst)
