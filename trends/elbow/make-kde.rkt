@@ -1,12 +1,31 @@
 #lang typed/racket/base
 
-(provide make-kde)
+(provide sample-tree->bandwidth->kde)
 
 ;; Forked by Philip from plot/private/common/kde.
 ;; Used under license LGPL v2.
 
 (require math/base
-         math/flonum)
+         math/flonum
+         "sample-tree.rkt")
+
+#|
+(define-struct/exec kde ([proc : (-> Flonum Flonum)]
+                         [x-min : (U Flonum #f)]
+                         [x-max : (U Flonum #f)])
+  [(λ ([this : Kde][x : Flonum])
+     ((kde-proc this) x))
+   : (-> Kde Flonum Flonum)]
+  #:type-name Kde)
+|#
+
+(: sample-tree->bandwidth->kde (-> Sample-Tree (-> Nonnegative-Flonum
+                                                   (-> Flonum Flonum))))
+(define (sample-tree->bandwidth->kde this)
+  (define-values [elements weights]
+    (sample-tree-iterate/flvectors/ascending this))
+  (flvectors->bandwidth->kde elements weights))
+
 
 (: make-kde/windowed (-> FlVector FlVector Flonum Flonum (-> Flonum Flonum)))
 ;; Can assume that xs is sorted.
@@ -58,33 +77,39 @@
       (* h (* (flsqrt 2.0) (flsqrt (fllog a))))
       0.0))
 
-(: make-kde (-> (Listof Real)
-                (Listof Nonnegative-Real)
-                (-> Nonnegative-Flonum
-                    (Values (-> Flonum Real)
-                            (U Real #f)
-                            (U Real #f)))))
-(define (make-kde xs ws)
-  ;; assume sorted for now
-  ;; NOTE!! Wants sorted by < !!!!
+
+(: flvectors->bandwidth->kde (-> FlVector
+                                 FlVector
+                                 (-> Nonnegative-Flonum (-> Flonum Flonum))))
+(define (flvectors->bandwidth->kde xs ws)
+  ;; assume sorted ASCENDING and same length
   (cond
-    [(or (null? xs) (null? ws))
+    [(= 0 (flvector-length xs))
      (λ (h)
-       (values (λ (y) 0) #f #f))]
+       ;(kde (λ (y) 0.0) #f #f)
+       (λ (y) 0.0))]
     [else
-     (let* ([xs (list->flvector xs)]
-            [ws (list->flvector ws)]
-            [ws (let ([sum-ws (flvector-sum ws)])
+     (let* ([ws (let ([sum-ws (flvector-sum ws)])
                   (inline-flvector-map
                    (λ ([w : Float]) (/ w sum-ws))
                    ws))]
             [x-min-base (flvector-ref xs 0)]
             [x-max-base (flvector-ref xs (sub1 (flvector-length xs)))])
+       (define dist-coeffcients
+         (flvector-map (λ ([w : Float])
+                         (define a (/ w eps))
+                         (if (a . > . 1.0)
+                             (* (flsqrt 2.0) (flsqrt (fllog a)))
+                             0.0))
+                       ws))
        (λ (h)
          (define max-dist
+           ;;(for/fold ([acc : Flonum -inf.0])
+           ;;          ([w : Flonum (in-flvector ws)])
+           ;;  (max acc (weight-max-dist w h))))
            (for/fold ([acc : Flonum -inf.0])
-                     ([w : Flonum (in-flvector ws)])
-             (max acc (weight-max-dist w h))))
+                     ([coef : Flonum (in-flvector dist-coeffcients)])
+             (max acc (* h coef))))
          (define c (/ 1.0 (* (flsqrt pi) h)))
          ;; The range of non-zero KDE values
          (define x-min (- x-min-base max-dist))
@@ -98,4 +123,5 @@
              (if (< x-min y x-max)
                  (* c (kde/windowed y))
                  0.0)))
-         (values f x-min x-max)))]))
+         ;(kde f x-min x-max)
+         f))]))

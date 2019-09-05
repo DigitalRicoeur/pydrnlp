@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(provide threshold/otsu)
+(provide sample-tree-threshold/otsu)
 
 ;; Ported by Philip McGrath
 ;; from the Python implementation by James Broda.
@@ -18,64 +18,61 @@
 ;; but we accept a weaker type in exchange for the storage
 ;; efficiency of FlVector / FlArray.
 
-(: threshold/otsu (-> (Sequenceof Positive-Integer) Positive-Integer))
-(define (threshold/otsu unsorted)
+(: sample-tree-threshold/otsu (-> Sample-Tree Positive-Integer))
+(define (sample-tree-threshold/otsu tree)
   (define disable-lazyness? #false)
-  (let/ec return : Positive-Integer
-    ;; descending order
-    (define-values [elements weights]
-      (let-values ([{elements weights}
-                    (sample-tree-iterate-descending
-                     (sequence->sample-tree unsorted))])
-        (when (or (null? elements) (null? (cdr elements)))
-          ;; guaranteed length at least 2
-          (return 1))
-        (values (list->array elements)
-                (list->array weights))))
-    (define e*w-arr : (Array Positive-Float)
-      ;; strict because it is forced for grand-total anyway
-      (array-strict
-       (array-map (λ ([e : Positive-Integer]
-                      [w : Positive-Integer])
-                    (fl (* e w)))
-                  elements
-                  weights)))
-    (define grand-total : Positive-Float
-      ;; ?? assert flrational? ?? re flonum overflow
-      (array-all-sum e*w-arr))
-    (parameterize ([array-strictness disable-lazyness?])
-      (define threshold-arr
-        (array-drop-last elements))
-      (define intra-class-variance-arr : (Array Float) ;; Nonnegative-Float
-        (let ([high-relevance-class-arr
-               (make-relevance-class-array
-                threshold-arr
-                (array-drop-last weights)
-                (array-drop-last e*w-arr)
-                grand-total)]
-              [low-relevance-class-arr
-               (array-reverse
+  ;; descending order
+  (define-values [elements weights]
+    (sample-tree-iterate/arrays/descending tree))
+  (cond
+    [(< (array-size elements) 2)
+     1]
+    [else
+     (define e*w-arr : (Array Positive-Float)
+       ;; strict because it is forced for grand-total anyway
+       (array-strict
+        (array-map (λ ([e : Positive-Integer]
+                       [w : Positive-Integer])
+                     (fl (* e w)))
+                   elements
+                   weights)))
+     (define grand-total : Positive-Float
+       ;; ?? assert flrational? ?? re flonum overflow
+       (array-all-sum e*w-arr))
+     (define threshold-arr
+       (parameterize ([array-strictness disable-lazyness?])
+         (array-drop-last elements)))
+     (define intra-class-variance-arr : (Array Float) ;; Nonnegative-Float
+       (parameterize ([array-strictness disable-lazyness?])
+         (let ([high-relevance-class-arr
                 (make-relevance-class-array
-                 (array-reverse (array-rest elements))
-                 (array-reverse (array-rest weights))
-                 (array-reverse (array-rest e*w-arr))
-                 grand-total))])
-          (inline-array-map fl+
-                            high-relevance-class-arr
-                            low-relevance-class-arr)))
-      (define-values [min-variance best-threshold]
-        (for/fold ([old-variance : Float +inf.0] ;; Nonnegative-Float
-                   [old-threshold : Positive-Integer 1])
-                  ([new-threshold (in-array threshold-arr)]
-                   [new-variance (in-array intra-class-variance-arr)])
-          (cond
-            [(>= old-variance new-variance)
-             ;; In the = case, prefer the smaller threshold.
-             (values new-variance new-threshold)]
-            [else
-             ;; handles nan
-             (values old-variance old-threshold)])))
-      best-threshold)))
+                 threshold-arr
+                 (array-drop-last weights)
+                 (array-drop-last e*w-arr)
+                 grand-total)]
+               [low-relevance-class-arr
+                (array-reverse
+                 (make-relevance-class-array
+                  (array-reverse (array-rest elements))
+                  (array-reverse (array-rest weights))
+                  (array-reverse (array-rest e*w-arr))
+                  grand-total))])
+           (inline-array-map fl+
+                             high-relevance-class-arr
+                             low-relevance-class-arr))))
+     (define-values [min-variance best-threshold]
+       (for/fold ([old-variance : Float +inf.0] ;; Nonnegative-Float
+                  [old-threshold : Positive-Integer 1])
+                 ([new-threshold (in-array threshold-arr)]
+                  [new-variance (in-array intra-class-variance-arr)])
+         (cond
+           [(>= old-variance new-variance)
+            ;; In the = case, prefer the smaller threshold.
+            (values new-variance new-threshold)]
+           [else
+            ;; handles nan
+            (values old-variance old-threshold)])))
+     best-threshold]))
     
 ;; doesn't actually work :( Positive-Float-No-NaN isn't exported
 ;;(define-type Nonnegative-Float-No-NaN
@@ -125,6 +122,7 @@
               (values (update-statistics old-stats
                                          (array-ref e-arr js)
                                          (array-ref w-arr js))
+                      ;; TODO consider flvector-sums
                       (+ old-running-total (array-ref e*w-arr js))))
             (λ ([stats : statistics]
                 [running-total : Positive-Float])
