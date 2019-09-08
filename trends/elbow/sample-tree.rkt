@@ -19,13 +19,6 @@
 
 (define-type Sample-Tree (U #f sample-tree-node))
 
-;; TODO is there an alternative data structure that would
-;;   be directly iterable w/o intermediate allocation?
-
-;; Red-Black (self-balancing) might help if insertion
-;; tends to be ordered (vid. Okasaki 3.3 p24),
-;; but I don't think it will be.
-
 (struct sample-tree-node
   ([nodes-count : Positive-Integer]
    [k : Positive-Integer]
@@ -33,6 +26,10 @@
    [left : Sample-Tree]
    [right : Sample-Tree])
   #:transparent)
+
+;; We can expect insertion order to be fairly random,
+;; since it will come from iterating over lemma/count tables,
+;; so we shouldn't need to worry about balancing these.
 
 (: sample-tree-add (-> Sample-Tree Positive-Integer sample-tree-node))
 (define (sample-tree-add it k)

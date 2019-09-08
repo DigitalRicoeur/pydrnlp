@@ -1,10 +1,11 @@
 #lang racket/base
 
-(require json
+(require ricoeur/stdlib/json
          racket/list
          racket/contract
          racket/match
          racket/async-channel
+         racket/stream
          racket/port
          racket/system
          "conda.rkt"
@@ -18,9 +19,11 @@
            (-> python-worker? boolean?)]
           [python-worker-kill
            (-> python-worker? any)]
+          [python-worker-dead-evt
+           (-> python-worker? (evt/c (or/c #f exn:fail?)))]
           ))
  
-(struct python-worker (cust worker)
+(struct python-worker (cust worker dead-evt)
   #:transparent)
 
 (define (write-json-line js out)
@@ -61,24 +64,33 @@
       (read-json in-from-py))
     (when (eof-object? revision)
       (error who "the Python process failed to launch properly"))
+    (define fatal-error-box
+      (box #f))
     (define worker
       (parameterize ([current-custodian cust])
         (thread
-         (λ () 
-           (let loop ()
-             (match-define (cons js reply-ach)
-               (thread-receive))
-             (write-json-line js out-to-py) ;; includes flush-output
-             (define rslt
-               (with-handlers ([exn:fail? values])
-                 (read-json in-from-py)))
-             (async-channel-put reply-ach rslt)
-             (loop))))))
+         (λ ()
+           (with-handlers ([exn:fail? (λ (e)
+                                        (set-box! fatal-error-box e)
+                                        (raise e))])
+             (let loop ()
+               (match-define (cons js reply-ach)
+                 (thread-receive))
+               (write-json-line js out-to-py) ;; includes flush-output
+               (for ([rslt (in-producer (λ () (read-json in-from-py)))]
+                     #:final (eq? 'null rslt))
+                 (when (eof-object? rslt)
+                   (error who "unexpected eof"))
+                 (async-channel-put reply-ach rslt))
+               (loop)))))))
     (thread
      (λ ()
        (sync (thread-dead-evt worker))
        (custodian-shutdown-all cust)))
-    (ctor cust worker revision)))
+    (ctor cust
+          (wrap-evt (thread-dead-evt worker)
+                    (λ (e) (unbox fatal-error-box)))
+          revision)))
 
 (define (python-worker-running? it)
   (thread-running? (python-worker-worker it)))
@@ -89,41 +101,36 @@
 
 
 
-(define (python-worker-send #:who who it raw-arg arg->jsexpr)
-  (define js-arg
-    (arg->jsexpr raw-arg))
+(define (python-worker-send #:who who it js-arg)
   (define reply-ach
     (make-async-channel))
-  (define worker
-    (python-worker-worker it))
+  (match-define (python-worker _ worker dead-evt) it)
   (thread-send worker
                (cons js-arg reply-ach)
                (λ ()
                  (raise-argument-error who
                                        "python-worker-running?"
-                                       1
-                                       it
-                                       raw-arg)))
+                                       it)))
   (handle-worker-result #:who who
                         reply-ach
-                        (thread-dead-evt worker)))
+                        dead-evt))
 
 
 (define (handle-worker-result #:who who reply-ach worker-dead-evt)
-  (define handle-reply-evt
-    (handle-evt reply-ach
-                (λ (js)
-                  (if (exn:fail? js)
-                      (raise js)
-                      js))))
-  (sync
-   handle-reply-evt
-   (handle-evt
-    worker-dead-evt
-    (λ (worker-dead-evt)
-      (or (sync/timeout 0 handle-reply-evt)
-          (error who
-                 "the python worker died before returning a result"))))))
+  (define (get-result)
+    (sync
+     reply-ach
+     (handle-evt
+      worker-dead-evt
+      (λ (maybe-fatal-error)
+        (or (sync/timeout 0 reply-ach)
+            (error who
+                   "~a\n  final exception: ~e"
+                   "the python worker died before returning a result"
+                   (or maybe-fatal-error
+                       (unquoted-printing-string "not recorded"))))))))
+  (for/stream ([js (in-producer get-result 'null)])
+    js))
 
 
 (define-for-syntax (compound-id #:ctxt ctxt . parts)
@@ -159,34 +166,24 @@
 
 
 (define-syntax-parser define-python-worker
-  [(_ name:id action:id
-      mod:bytes arg:bytes ...
-      convert-arg:expr convert-result:expr)
-   #:with name-action (compound-id #:ctxt #'name #'name "-" #'action)
+  [(_ name:id
+      mod:bytes arg:bytes ...)
+   ;; FIXME do less here
+   ;; get rid of convert-arg:expr convert-result
+   ;; just bind a type-specific name-send/raw function
    #:with name? (compound-id #:ctxt #'name #'name "?")
    #:with name-revision (compound-id #:ctxt #'name #'name "-revision")
    #:with launch-name (compound-id #:ctxt #'name "launch-" #'name)
+   #:with name-send/raw (compound-id #:ctxt #'name #'name "-send/raw")
    #`(begin
        (struct name python-worker (revision)
          #:constructor-name ctor
          #:name static-name)
        (define launch-name
          (make-launcher #:who 'launch-name mod ctor '(arg ...)))
-       (define convert-arg* convert-arg)
-       (define convert-result* convert-result)
-       (define (name-action it raw-arg)
-         (convert-result*
-          (python-worker-send
-           #:who 'name-action it raw-arg convert-arg*))))])
+       (define (name-send/raw it js-arg #:who [who 'name-send/raw])
+         (python-worker-send #:who who it js-arg)))])
          
 
 
-   
-                             
 
-
-
-
-
-
-   

@@ -5,17 +5,17 @@ Types used in this module:
 --------------------------
 
 - `JsToken`:
-    `{"lemma": str, "text": str}`
+    `(str, str)` meaning lemma & text
 
 - `JsOutSegment`:
-    `{"key": JsExpr, "tokenized": Listof[JsToken]}`
+    `(JsExpr, Listof[JsToken])`
 
 - `JsOut`:
     `Listof[JsOutSegment]`
 
 
 - `JsInSegment`:
-    `{"key": JsExpr, "body": str}`
+    `(jsExpr, str)` meaning key & body
 
 - `JsIn`:
     `{LangStr: Listof[JsInSegment]}`
@@ -48,34 +48,14 @@ def revision():
 
     When the result of tokenizerRevision() changes, any cache is stale.
     """
-    thisModuleRevision = 6
+    thisModuleRevision = 7
     return [thisModuleRevision,
             pydrnlp.language.revision()]
 
 
 
-
-def analyze_all(jsIn, verbose=False):
-    """Tokenizes JsIn. **TODO: document this.**"""
-    ret = []
-    for langStr, segs in jsIn.items():
-        nlp = pydrnlp.language.get(langStr)
-        ret.extend(_analyze_language_segments(nlp, segs, verbose=verbose))
-    return ret
-
-
-def _analyze_language_segments(nlp, segs, verbose=False):
-    """Tokenizes a Listof[JsInSegment] segs using the language nlp."""
-    args = ((jsInSeg["body"], jsInSeg["key"]) for jsInSeg in segs)
-    for (doc, key) in nlp.pipe(args, as_tuples = True):
-        yield {"key": key,
-               "tokenized": list(_analyze_spacy_doc(nlp,
-                                                    doc,
-                                                    verbose=verbose))}
-
-
-def _analyze_spacy_doc(nlp, doc, verbose=False):
-    """Returns an iterator of JSON-convertable token dictionaries.
+def analyze_all(jsIn):
+    """Tokenizes JsIn. **TODO: document this.**
 
     Tokens which do not satisfy
     `pydrnlp.tokenizer.usetoken.tokenShouldUseForLang`
@@ -86,22 +66,16 @@ def _analyze_spacy_doc(nlp, doc, verbose=False):
     normalized, but some words (e.g. "DuFay") shouldn't be.
     (Also, some lemmas are strange, like "whatev".)
     """
-    for token in doc:
-        if tokenShouldUseForLang(token, nlp):
-            yield _token_to_json(token, verbose=verbose)
+    for langStr, segs in jsIn.items():
+        nlp = pydrnlp.language.get(langStr)
+        # seg_in is (key, body) so an nlp arg is (body, key)
+        nlp_args = ((seg_in[1], seg_in[0]) for seg_in in segs)
+        for (doc, key) in nlp.pipe(args, as_tuples = True):
+            tkns = [(t.lemma_, t.text)
+                    for t in doc if tokenShouldUseForLang(t, nlp)]
+            yield (key, tkns)
 
-
-def _token_to_json(token, verbose=False):
-    if verbose:
-        return {"lemma": token.lemma_ ,
-                "pos": token.pos_,
-                "tag": token.tag_,
-                "norm": token.norm_,
-                "is_oov": token.is_oov, # oov = out of vocabulary
-                "text": token.text}
-    else:
-        return {"lemma": token.lemma_ ,
-                "text": token.text}
+            
 
 # tokenShouldUseForLang : Token Language -> bool
 def tokenShouldUseForLang(token, lang):
@@ -128,7 +102,7 @@ def tokenShouldUseForLang(token, lang):
     elif (token.lemma_ in lang.Defaults.stop_words):
         # token.is_stop checked above
         return False
-    elif (not check_enough_alphabetic_chars(token.lemma_)):
+    elif (not _check_enough_alphabetic_chars(token.lemma_)):
         return False
     else:
         return True
@@ -136,10 +110,10 @@ def tokenShouldUseForLang(token, lang):
 _min_alphabetic_chars = 3 # must be positive
 _char_alphabetic_regex = regex.compile("\\p{Alphabetic=Yes}")
 
-# check_enough_alphabetic_chars : str -> bool
+# _check_enough_alphabetic_chars : str -> bool
 # Returns True IFF its arg has at least _min_alphabetic_chars
 # characters that match _char_alphabetic_regex.
-def check_enough_alphabetic_chars(lemma):
+def _check_enough_alphabetic_chars(lemma):
     if len(lemma) < _min_alphabetic_chars:
         return False
     else:
@@ -157,21 +131,19 @@ _interesting_pos_strings = frozenset({
 })
 
 
-# FIXME use MultiprocessWorker when fixed
-class TrendsWorker(pydrnlp.jsonio.Worker):
-    def __init__(self, verbose=False):
-        self.verbose = verbose
-    def prelude(self):
-        return [ revision() ]
-    def each(self, js):
-        return analyze_all(js, verbose=self.verbose)
+
+class TrendsEngine(pydrnlp.jsonio.Engine):
+    def on_start(self, emit):
+        emit(revision())
+    def on_input(self, emit, js):
+        for seg in analyze_all(js):
+            emit(seg)
+        emit(None)
+
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="engine for Trends tool")
-    parser.add_argument("--verbose",
-                        action="store_true",
-                        help="include debugging details in JSON output")
     args = parser.parse_args()
-    TrendsWorker(verbose=args.verbose).start()
+    TrendsEngine().start()

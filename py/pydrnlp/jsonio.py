@@ -18,7 +18,19 @@ import srsly.ujson
 import sys
 
 
-class Worker(ABC):
+class Engine():
+    def on_start(self, emit):
+        pass
+    def on_input(self, emit, js):
+        pass
+    def start(self):
+        """Do not override this method."""
+        emit = lambda js: _dump_json_line(js, sys.stdout)
+        self.on_start(emit)
+        for js in _yield_json_lines(sys.stdin):
+            self.on_input(emit, js)
+
+class _Worker(ABC):
     """Represents a program that loops over JSON IO,
     transforming each value using `each`.
     See also `MultiprocessWorker`.
@@ -55,7 +67,7 @@ class Worker(ABC):
 # line 92, in _yield_json_lines
 #    for line in fIn:
 # ValueError: I/O operation on closed file.
-class MultiprocessWorker(Worker):
+class _MultiprocessWorker(_Worker):
     """**BROKEN** Like `Worker`, but uses helper processes to
     handle IO without blocking the main loop.
     This might be helpful when the input and output JSON values are big.

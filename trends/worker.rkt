@@ -4,15 +4,14 @@
          racket/list
          racket/contract
          racket/match
+         racket/stream
          racket/async-channel
          racket/port
          racket/system
+         adjutor
          pydrnlp/worker)
 
 (provide trends-engine?
-         trends-debug-engine?
-         launch-trends-debug-engine
-         trends-debug-engine-tokenize
          (contract-out
           [launch-trends-engine
            (->* {}
@@ -23,34 +22,21 @@
           [trends-engine-tokenize
            (-> trends-engine?
                (listof json-segment?)
-               (listof trends-segment-result?))]
+               (stream/c trends-segment-result?))]
           [struct trends-segment-result
             ([key jsexpr?]
              [tokens (listof token?)])]
           [struct token
             ([lemma symbol?]
              [text (and/c string? immutable?)])]
-          ;;;;
-          ;; reusable
           [struct json-segment
             ([lang (or/c 'en 'fr)]
              [key jsexpr?]
              [text string?])]
-          [json-segments->jsexpr
-           (-> (listof json-segment?) jsexpr?)]
           ))
 
 (struct json-segment (lang key text)
   #:transparent)
-
-(define (json-segments->jsexpr args)
-  (for/hasheq ([grp (in-list (group-by json-segment-lang args eq?))])
-    (values (json-segment-lang (car grp))
-            (map (match-lambda
-                   [(json-segment _ key text)
-                    (hasheq 'key key
-                            'body text)])
-                 grp))))
 
 (struct trends-segment-result (key tokens)
   #:transparent)
@@ -58,36 +44,44 @@
 (struct token (lemma text)
   #:transparent)
 
-(define-python-worker trends-engine tokenize
-  #"pydrnlp.trends"
-  json-segments->jsexpr
-  (λ (js)
-    (define (error!)
-      (error 'trends-analyzer-analyze
-             "Python returned an invalid result\n  given: ~e"
-             js))
-    (unless (list? js)
-      (error!))
-    (for/list ([j (in-list js)])
-      (match j
-        [(hash-table
-          ['key key]
-          ['tokenized (list (hash-table
-                             ['lemma (app string->symbol lemma...)]
-                             ['text (app datum-intern-literal text...)])
-                            ...)])
-         (trends-segment-result key (map token lemma... text...))]
-        [_
-         (error!)]))))
+(define-python-worker trends-engine
+  #"pydrnlp.trends")
 
-(define-python-worker trends-debug-engine tokenize
-  #"pydrnlp.trends" #"--verbose"
-  json-segments->jsexpr
-  (λ (rslts)
-    (for*/list ([seg (in-list rslts)]
-                [tkn (in-list (hash-ref seg 'tokenized))])
-      (hash-update (hash-update tkn 'lemma string->symbol)
-                   'text
-                   datum-intern-literal))))
-
+(define trends-engine-tokenize
+  (letrec ([trends-engine-tokenize
+            (λ (it segs)
+              (for/fold/define ([keys-table #hasheqv()]
+                                [js-arg #hasheq()])
+                               ([i (in-naturals)]
+                                [seg (in-list segs)])
+                (match-define (json-segment lang key text) seg)
+                (values (hash-set keys-table i key)
+                        (hash-set js-arg
+                                  lang
+                                  (cons (list i text)
+                                        (hash-ref js-arg lang null)))))
+              (convert-results
+               keys-table
+               (trends-engine-send/raw it js-arg #:who 'trends-engine-tokenize)))]
+           [convert-results
+            (λ (keys-table js-results)
+              (cond
+                [(stream-empty? js-results)
+                 (if (< 0 (hash-count keys-table))
+                     empty-stream
+                     (error 'trends-engine-tokenize
+                            "~a\n  missing keys: ~e"
+                            "stream ended without producing all results"
+                            keys-table))]
+                [else
+                 (match-define (list key (list (list lema... text...) ...))
+                   (stream-first js-results))
+                 (define this
+                   (trends-segment-result (hash-ref keys-table key)
+                                          (map token lema... text...)))
+                 (let ([keys-table (hash-remove keys-table key)])
+                   (stream-cons this
+                                (convert-results keys-table
+                                                 (stream-rest js-results))))]))])
+    trends-engine-tokenize))
   
