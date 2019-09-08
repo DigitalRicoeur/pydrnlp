@@ -88,6 +88,7 @@
        (sync (thread-dead-evt worker))
        (custodian-shutdown-all cust)))
     (ctor cust
+          worker
           (wrap-evt (thread-dead-evt worker)
                     (λ (e) (unbox fatal-error-box)))
           revision)))
@@ -168,9 +169,6 @@
 (define-syntax-parser define-python-worker
   [(_ name:id
       mod:bytes arg:bytes ...)
-   ;; FIXME do less here
-   ;; get rid of convert-arg:expr convert-result
-   ;; just bind a type-specific name-send/raw function
    #:with name? (compound-id #:ctxt #'name #'name "?")
    #:with name-revision (compound-id #:ctxt #'name #'name "-revision")
    #:with launch-name (compound-id #:ctxt #'name "launch-" #'name)
@@ -182,6 +180,9 @@
        (define launch-name
          (make-launcher #:who 'launch-name mod ctor '(arg ...)))
        (define (name-send/raw it js-arg #:who [who 'name-send/raw])
+         (unless (name? it)
+           ;; doesn't consult #:who
+           (raise-argument-error 'name-send/raw (symbol->string 'name?) it))
          (python-worker-send #:who who it js-arg)))])
          
 

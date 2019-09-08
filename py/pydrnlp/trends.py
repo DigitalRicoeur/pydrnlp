@@ -131,19 +131,9 @@ _interesting_pos_strings = frozenset({
 })
 
 
-
-class TrendsEngine(pydrnlp.jsonio.Engine):
-    def on_start(self, emit):
-        emit(revision())
-    def on_input(self, emit, js):
-        for seg in analyze_all(js):
-            emit(seg)
-        emit(None)
-
-
-
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="engine for Trends tool")
     args = parser.parse_args()
-    TrendsEngine().start()
+    pydrnlp.jsonio.start_loop(revision=revision,
+                              on_input=analyze_all)

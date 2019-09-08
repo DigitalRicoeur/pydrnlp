@@ -18,7 +18,17 @@ import srsly.ujson
 import sys
 
 
-class Engine():
+def start_loop(revision, on_input):
+    def emit(js):
+        _dump_json_line(js, sys.stdout)
+    emit(revision())
+    for js in _yield_json_lines(sys.stdin):
+        for ret in on_input(js):
+            emit(ret)
+        emit(None)
+
+
+class _Engine():
     def on_start(self, emit):
         pass
     def on_input(self, emit, js):
@@ -30,44 +40,14 @@ class Engine():
         for js in _yield_json_lines(sys.stdin):
             self.on_input(emit, js)
 
-class _Worker(ABC):
-    """Represents a program that loops over JSON IO,
-    transforming each value using `each`.
-    See also `MultiprocessWorker`.
-    """
-    @abstractmethod
-    def each(self, js):
-        """Abstract method called on each JSON value from the input."""
-        pass
-    def prelude(self):
-        """Returns an iterator of JSON-convertable objects
-        to be written before processing input.
 
-        Default: `[]`
-        """
-        return []
-    def start(self):
-        """Starts the IO loop. Do not override this method.
-
-        This method should be called inside a block guarded
-        by `if __name__ == "__main__"`.
-        """
-        for item in self.prelude():
-            # avoid multiprocessing overhead
-            # if this is going to be killed quickly
-            _dump_json_line(item, sys.stdout)
-        self._after_prelude()
-    def _after_prelude(self):
-        for jsIn in _yield_json_lines(sys.stdin):
-            jsOut = self.each(jsIn)
-            _dump_json_line(jsOut, sys.stdout)
 
 
 # FIXME
 # line 92, in _yield_json_lines
 #    for line in fIn:
 # ValueError: I/O operation on closed file.
-class _MultiprocessWorker(_Worker):
+class _MultiprocessWorker():
     """**BROKEN** Like `Worker`, but uses helper processes to
     handle IO without blocking the main loop.
     This might be helpful when the input and output JSON values are big.

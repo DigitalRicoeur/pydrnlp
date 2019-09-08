@@ -13,10 +13,6 @@
             [lemma/string lemma/string?])]
           [struct tokenized-document
             ([info plain-instance-info?]
-             [lemma/count lemma/count?]
-             [segments (listof tokenized-segment?)])]
-          [struct tokenized-segment
-            ([meta segment-meta?]
              [lemma/count lemma/count?])]
           [struct doc+strings
             ([tokenized-document tokenized-document?]
@@ -40,14 +36,9 @@
 
 (TODO/void separate lemma/string by language)
 
-(struct tokenized-document (info lemma/count segments)
+(struct tokenized-document (info lemma/count)
   #:property prop:instance-info
   (λ (this) (tokenized-document-info this))
-  #:transparent)
-
-(struct tokenized-segment (meta lemma/count)
-  #:property prop:segment
-  (λ (this) (tokenized-segment-meta this))
   #:transparent)
 
 (struct doc+strings (tokenized-document lemma/string)

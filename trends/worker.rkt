@@ -1,6 +1,6 @@
 #lang racket
 
-(require json
+(require ricoeur/stdlib/json
          racket/list
          racket/contract
          racket/match
