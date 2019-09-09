@@ -10,7 +10,7 @@
          "otsu.rkt"
          "../types.rkt"
          "../cache-tokenize-corpus.rkt")
-
+;
 (module+ main
   (output-english-books)
   (map (λ (dir)
@@ -18,7 +18,8 @@
            (variant-directory->data dir))
          (cons kde otsu))
        (variant-directories))
-  #;(plot-variant (car (variant-directories))))
+  ;(plot-variant (car (variant-directories)))
+  #;(map plot-variant (variant-directories)))
 
 ;; fasl doesn't handle flvectors
 (struct data (name kde otsu elements weights) #:prefab)

@@ -17,7 +17,7 @@
    [#:struct string-info ([value : String])]))
 
 (define max-attempts : Positive-Index
-  1000)
+  10000)
 (define bandwidth-scale-factor : Positive-Flonum
   (assert 0.9
           flprobability?))
@@ -41,8 +41,9 @@
                            ;; doesn't seem to work well:
                            ;; (* 20 (sample-tree-sequence-length tree))))
                            ;; (exact-floor (/ x-max 5))))
-                           (* 2 x-max)))
+                           (* 4 x-max)))
      (define bandwidth (sample-tree->init-bandwidth/scott tree))
+     (eprintf "Scott's bandwidth: ~e\n" bandwidth)
      (let loop : Positive-Integer ([bandwidth : Nonnegative-Flonum bandwidth]
                                    [attempt : Positive-Fixnum 1])
        (define kde (bandwidth->kde bandwidth))
@@ -66,10 +67,18 @@
 
 (: sample-tree->init-bandwidth/scott (-> Sample-Tree Nonnegative-Flonum))
 (define (sample-tree->init-bandwidth/scott tree)
+  (define neff
+    ;; following SciPy, neff = sum(weights)^2 / sum(weights^2)
+    (let-values ([{elements weights}
+                  (sample-tree-iterate/arrays/descending tree)])
+      (parameterize ([array-strictness #false])
+        (/ (expt (array-all-sum weights) 2)
+           (array-all-sum (array-sqr weights))))))
   (define num-dimensions 1.0)
-  (expt (max (fl (sample-tree-effective-samples-count tree)) 1.0) ;; prove to typechecker
-        (/ -1.0 (+ num-dimensions 4.0))))
-     
+  (define the-power (/ -1.0 (+ num-dimensions 4.0)))
+  (assert ((make-flexpt neff) the-power)
+          positive?))
+
 (: make-uniform-array (-> Positive-Integer Nonnegative-Integer FlArray))
 (define (make-uniform-array max num-samples)
   ;; inspired by numpy.linspace and linear-seq from plot/utils
