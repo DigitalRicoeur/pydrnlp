@@ -70,7 +70,7 @@ def analyze_all(jsIn):
         nlp = pydrnlp.language.get(langStr)
         # seg_in is (key, body) so an nlp arg is (body, key)
         nlp_args = ((seg_in[1], seg_in[0]) for seg_in in segs)
-        for (doc, key) in nlp.pipe(args, as_tuples = True):
+        for (doc, key) in nlp.pipe(nlp_args, as_tuples = True):
             tkns = [(t.lemma_, t.text)
                     for t in doc if tokenShouldUseForLang(t, nlp)]
             yield (key, tkns)

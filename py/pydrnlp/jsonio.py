@@ -28,21 +28,6 @@ def start_loop(revision, on_input):
         emit(None)
 
 
-class _Engine():
-    def on_start(self, emit):
-        pass
-    def on_input(self, emit, js):
-        pass
-    def start(self):
-        """Do not override this method."""
-        emit = lambda js: _dump_json_line(js, sys.stdout)
-        self.on_start(emit)
-        for js in _yield_json_lines(sys.stdin):
-            self.on_input(emit, js)
-
-
-
-
 # FIXME
 # line 92, in _yield_json_lines
 #    for line in fIn:

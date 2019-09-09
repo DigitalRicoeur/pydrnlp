@@ -17,8 +17,8 @@
   (for/fold/define ([t-args null])
                    ([seg (in-list (tei-document-segments doc))]
                     [i (in-naturals)])
-    (match-define (base-segment meta body) seg)
-    (values (cons (json-segment lang meta body) t-args)))
+    (match-define (base-segment _ body) seg)
+    (values (cons (json-segment lang i body) t-args)))
   (for*/fold ([doc:lemma/count empty:lemma/count]
               [doc:lemma/string empty:lemma/string]
               #:result (doc+strings (tokenized-document info doc:lemma/count)

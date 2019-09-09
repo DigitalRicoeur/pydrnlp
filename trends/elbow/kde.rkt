@@ -2,16 +2,22 @@
 
 (provide sample-tree-threshold/kde)
 
+;; Adapted by Philip McGrath
+;; from the Python implementation by James Broda.
+
 (require "sample-tree.rkt"
          "make-kde.rkt"
          math/array
          math/flonum)
 
 (module+ test
-  (require typed/rackunit))
+  (require typed/rackunit)
+  (require/typed
+   rackunit
+   [#:struct string-info ([value : String])]))
 
 (define max-attempts : Positive-Index
-  1)
+  1000)
 (define bandwidth-scale-factor : Positive-Flonum
   (assert 0.9
           flprobability?))
@@ -25,19 +31,24 @@
   (cond
     [(or (= x-max 0) (= x-max 1)) ;; prove Positive-Integer in else
      ;; bail out on 0 or 1
+     (eprintf "bail out on ~a\n" x-max)
      1]
     [else
      (define bandwidth->kde 
        (sample-tree->bandwidth->kde tree))
      (define test-xs
        (make-uniform-array x-max
-                           ;; ??? this seems like a lot
-                           (* 20 (sample-tree-sequence-length tree))))
+                           ;; doesn't seem to work well:
+                           ;; (* 20 (sample-tree-sequence-length tree))))
+                           ;; (exact-floor (/ x-max 5))))
+                           (* 2 x-max)))
      (define bandwidth (sample-tree->init-bandwidth/scott tree))
      (let loop : Positive-Integer ([bandwidth : Nonnegative-Flonum bandwidth]
                                    [attempt : Positive-Fixnum 1])
        (define kde (bandwidth->kde bandwidth))
-       (define peaks (find-relative-minima (flarray-map kde test-xs)))
+       (define peaks
+         ;; ??
+         (find-relative-minima/handle-flat (flarray-map kde test-xs)))
        (cond
          [(< 0 (array-size peaks))
           (define fl-threshold
@@ -49,6 +60,7 @@
                 (add1 attempt))]
          [else
           ;; give up
+          (eprintf "give up\n")
           1]))]))
 
 
@@ -60,7 +72,7 @@
      
 (: make-uniform-array (-> Positive-Integer Nonnegative-Integer FlArray))
 (define (make-uniform-array max num-samples)
-  ;; inspired by numpy.linspace
+  ;; inspired by numpy.linspace and linear-seq from plot/utils
   ;; see https://github.com/numpy/numpy/issues/5437
   ;; for lots of things I'm not dealing with
   ;; bail out on max of 0 or 1
@@ -78,9 +90,10 @@
     (let ([step : Exact-Rational (/ (sub1 max) num-samples)])
       (fl step)))
   ;; don't iteratively add step: avoid weird float issues
-  (for ([i (in-range 1 last-index)])
-    (flvector-set! data i (* (fl i) step)))
+  (for ([i (in-range 0 last-index)])
+    (flvector-set! data i (add1 (* (fl i) step))))
   ret)
+
 
 (: find-relative-minima (-> (Array Flonum) (Array Indexes)))
 (define (find-relative-minima data)
@@ -139,3 +152,30 @@
    (equal? (find-relative-minima (array #[3.0 2.0 1.0 2.0 3.0]))
            (array #['#(2)]))))
 
+(: find-relative-minima/handle-flat (-> (Array Flonum) (Array In-Indexes)))
+(define (find-relative-minima/handle-flat data)
+  ;; see notes on find-relative-minima
+  ;; this is like `scipy.signal.find_peaks`
+  (define size : Index
+    (array-size data))
+  (define (data-ref [i : Integer]) : Flonum
+    (array-ref data (vector-immutable i)))
+  (for*/array: ([i (in-range 1 (sub1 size))]
+                [this (in-value (data-ref i))]
+                #:when (< this (data-ref (sub1 i)))
+                #:when (< this (for*/fold ([next-different : Flonum this])
+                                          ([j (in-range (add1 i) size)]
+                                           [next (in-value (data-ref j))]
+                                           #:unless (= next this)
+                                           #:final #t)
+                                 next)))
+    : In-Indexes
+    (vector-immutable i)))
+
+(module+ test
+  (for ([arr : (Array Flonum) (list (array #[3.0 2.0 1.0 2.0 3.0])
+                                    (array #[3.0 2.0 1.0 1.0 2.0 3.0])
+                                    (array #[3.0 2.0 1.0 1.0 1.0 2.0 3.0]))])
+    (check-true
+     (equal? (find-relative-minima/handle-flat arr)
+             (array #['#(2)])))))

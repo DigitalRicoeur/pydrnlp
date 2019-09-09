@@ -17,8 +17,9 @@
 
 (provide (contract-out
           [get/build-tokenized-corpus
-           (-> (instance-set/c tei-document?)
-               tokenized-corpus?)]
+           (->* [(instance-set/c tei-document?)]
+                [#:quiet? any/c]
+                tokenized-corpus?)]
           ))
 
 (define-runtime-path trends-cache-db.sqlite
@@ -188,7 +189,7 @@
              [accessedPosix ,now]))
     (values (set-add found tokenized)
             (union:lemma/count corpus:lemma/count l/c)
-            (union:lemma/string corpus:lemma/string l/c))))
+            (union:lemma/string corpus:lemma/string l/s))))
   (python-worker-kill py)
   (let ([now (current-seconds)])
     (query-exec/db
@@ -204,12 +205,12 @@
              [accessedPosix ,now])))
   (query-exec/db
    (for/insert-statement (#:into tTokenizedCorporaDocuments
-                          [{title-str checksum-sym}
+                          [{title-sym checksum-sym}
                            (in-immutable-hash checksum-table)])
      #:set
      [corpusChecksumTableFasl ,corpusChecksumTableFasl]
      [cacheTokenizerRevisionFasl ,cacheTokenizerRevisionFasl]
-     [docTitle ,title-str]
+     [docTitle ,(symbol->string title-sym)]
      [docChecksum ,(symbol->string checksum-sym)]))
   corpus)
 

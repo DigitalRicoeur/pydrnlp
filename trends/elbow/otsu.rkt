@@ -100,17 +100,15 @@
         (array->flarray (make-array shape 0.0)))
       (define data
         (flarray-data ret))
-      (for/fold ([old-stats : statistics empty-statistics]
-                 [old-running-total : Nonnegative-Float 0.0])
+      (for/fold ([stats : statistics empty-statistics]
+                 [running-total : Nonnegative-Float 0.0])
                 ([js : Indexes (in-array-indexes shape)])
-        (: stats statistics)
-        (: running-total Positive-Float)
-        (define-values [stats running-total]
-          (get-this stats running-total js))
-        (flvector-set! data
-                       (vector-ref js 0)
-                       (->r-c-weighted-variance stats running-total))
-        (values stats running-total))
+        (let-values ([{stats running-total}
+                      (get-this stats running-total js)])
+          (flvector-set! data
+                         (vector-ref js 0)
+                         (->r-c-weighted-variance stats running-total))
+          (values stats running-total)))
       ret)
     (: make-relevance-class-array __make-relevance-class-array_t)
     (define (make-relevance-class-array e-arr w-arr e*w-arr grand-total)

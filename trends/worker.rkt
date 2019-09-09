@@ -50,38 +50,42 @@
 (define trends-engine-tokenize
   (letrec ([trends-engine-tokenize
             (λ (it segs)
-              (for/fold/define ([keys-table #hasheqv()]
+              (for/fold/define ([expect-count 0]
                                 [js-arg #hasheq()])
                                ([i (in-naturals)]
                                 [seg (in-list segs)])
                 (match-define (json-segment lang key text) seg)
-                (values (hash-set keys-table i key)
+                (values (add1 expect-count)
                         (hash-set js-arg
                                   lang
                                   (cons (list i text)
                                         (hash-ref js-arg lang null)))))
               (convert-results
-               keys-table
+               expect-count
                (trends-engine-send/raw it js-arg #:who 'trends-engine-tokenize)))]
            [convert-results
-            (λ (keys-table js-results)
-              (cond
-                [(stream-empty? js-results)
-                 (if (< 0 (hash-count keys-table))
-                     empty-stream
-                     (error 'trends-engine-tokenize
-                            "~a\n  missing keys: ~e"
-                            "stream ended without producing all results"
-                            keys-table))]
-                [else
-                 (match-define (list key (list (list lema... text...) ...))
-                   (stream-first js-results))
-                 (define this
-                   (trends-segment-result (hash-ref keys-table key)
-                                          (map token lema... text...)))
-                 (let ([keys-table (hash-remove keys-table key)])
+            (λ (expect-count js-results)
+              (let loop ([count 0]
+                         [js-results js-results])
+                (cond
+                  [(stream-empty? js-results)
+                   (if (= count expect-count)
+                       empty-stream
+                       (error 'trends-engine-tokenize
+                              "~a\n  expected: ~e\n  given: ~e"
+                              "stream ended without producing all results"
+                              expect-count
+                              count))]
+                  [else
+                   (match-define (list key (list (list (app string->symbol lema...)
+                                                       (app string->immutable-string text...))
+                                                 ...))
+                     (stream-first js-results))
+                   (define this
+                     (trends-segment-result key (map token lema... text...)))
+                   (define new-count (add1 count))
                    (stream-cons this
-                                (convert-results keys-table
-                                                 (stream-rest js-results))))]))])
+                                (loop new-count
+                                      (stream-rest js-results)))])))])
     trends-engine-tokenize))
   
