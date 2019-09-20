@@ -10,7 +10,7 @@
          "otsu.rkt"
          "../types.rkt"
          "../cache-tokenize-corpus.rkt")
-;
+#;
 (module+ main
   (output-english-books)
   (map (λ (dir)
@@ -18,13 +18,13 @@
            (variant-directory->data dir))
          (cons kde otsu))
        (variant-directories))
-  ;(plot-variant (car (variant-directories)))
-  #;(map plot-variant (variant-directories)))
+  (map plot-variant (variant-directories)))
 
 ;; fasl doesn't handle flvectors
 (struct data (name kde otsu elements weights) #:prefab)
 
-(define save-plots? #false)
+(define save-plots?
+  (make-parameter #false))
 
 (define-runtime-path out-dir
   "out/")
@@ -33,7 +33,7 @@
   (match-define (data name kde otsu elements weights)
     (variant-directory->data dir))
   (define out-file
-    (and save-plots? (build-path dir "plot.png")))
+    (and (save-plots?) (build-path dir "plot.png")))
   ;; kde red, otsu blue, data greenish
   (parameterize (#;[plot-x-transform log-transform]
                  #;[plot-x-ticks (log-ticks)])
@@ -44,15 +44,22 @@
      #:out-file out-file
      #:height 400
      #:width 800
-     (list (vrule kde #:color "red")
-           (vrule otsu #:color "blue")
+     (list (vrule kde
+                  #:label "KDE"
+                  #:color "red")
+           (vrule otsu
+                  #:label "Otsu"
+                  #:color "blue")
            (points (for/stream ([x (in-flvector elements)]
                                 [y (in-flvector weights)])
                      (list x y)))))))
-   
+
+
+(define variant-directories-index-fasl*-path
+  (build-path out-dir "index.fasl*.rktd"))
 
 (define (variant-directories)
-  (call-with-input-file* (build-path out-dir "index.fasl*.rktd")
+  (call-with-input-file* variant-directories-index-fasl*-path
     (λ (in)
       (for/list ([pth (in-port (λ (in)
                                  (if (eof-object? (peek-byte in))
@@ -68,7 +75,7 @@
   (match-define (tokenized-corpus docs counts strings)
     (tokenize-english-books (get-docs)))
   (make-directory* out-dir)
-  (call-with-output-file* (build-path out-dir "index.fasl*.rktd")
+  (call-with-output-file* variant-directories-index-fasl*-path
     (λ (out)
       (s-exp->fasl (output-variant #f counts strings) out)
       (for ([d (in-instance-set docs)])

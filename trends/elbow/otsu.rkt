@@ -28,17 +28,16 @@
     [(< (array-size elements) 2)
      1]
     [else
-     (define e*w-arr : (Array Positive-Float)
-       ;; strict because it is forced for grand-total anyway
-       (array-strict
-        (array-map (λ ([e : Positive-Integer]
-                       [w : Positive-Integer])
-                     (fl (* e w)))
-                   elements
-                   weights)))
-     (define grand-total : Positive-Float
-       ;; ?? assert flrational? ?? re flonum overflow
-       (array-all-sum e*w-arr))
+     (: e*w-arr (Array Float)) ;; Positive-Float
+     (: grand-total Positive-Float)
+     (define-values [e*w-arr grand-total]
+       (let* ([e*w-arr (array->flarray
+                        ;; strict because it is forced for grand-total anyway
+                        (parameterize ([array-strictness disable-lazyness?])
+                          (array* elements weights)))]
+              [grand-total ;; ?? assert flrational? ?? re flonum overflow
+               (flvector-sum (flarray-data e*w-arr))])
+         (values e*w-arr (assert grand-total positive?))))
      (define threshold-arr
        (parameterize ([array-strictness disable-lazyness?])
          (array-drop-last elements)))
@@ -72,65 +71,45 @@
            [else
             ;; handles nan
             (values old-variance old-threshold)])))
+     (eprintf "otsu:\n")
+     (eprintf "    min-variance = ~a\n" min-variance)
+     (eprintf "  best-threshold = ~a\n" best-threshold)
      best-threshold]))
-    
-;; doesn't actually work :( Positive-Float-No-NaN isn't exported
-;;(define-type Nonnegative-Float-No-NaN
-;;  ;; Excludes +nan.0, includes +inf.0
-;;  ;; Rationale: ∀α (not (or (< α +nan.0) (< +nan.0 α)))
-;;  ;; ... which is a problem when minimizing variance
-;;  (U Positive-Float Float-Zero))
 
-(define-type __make-relevance-class-array_t
-  (-> (Array Positive-Integer)
-      (Array Positive-Integer)
-      (Array Positive-Float)
-      Positive-Float
-      (Array Float))) ;; Nonnegative-Float
-(: make-relevance-class-array __make-relevance-class-array_t)
-(define make-relevance-class-array
-  (let ()
-    (: wrap (-> Indexes
-                (-> statistics Nonnegative-Float Indexes
-                    (values statistics Positive-Float))
-                (-> statistics Positive-Float Nonnegative-Float)
-                (Array Float)))
-    (define (wrap shape get-this ->r-c-weighted-variance)
-      (define ret
-        (array->flarray (make-array shape 0.0)))
-      (define data
-        (flarray-data ret))
-      (for/fold ([stats : statistics empty-statistics]
-                 [running-total : Nonnegative-Float 0.0])
-                ([js : Indexes (in-array-indexes shape)])
-        (let-values ([{stats running-total}
-                      (get-this stats running-total js)])
-          (flvector-set! data
-                         (vector-ref js 0)
-                         (->r-c-weighted-variance stats running-total))
-          (values stats running-total)))
-      ret)
-    (: make-relevance-class-array __make-relevance-class-array_t)
-    (define (make-relevance-class-array e-arr w-arr e*w-arr grand-total)
-      (wrap (array-shape e-arr)
-            (λ ([old-stats : statistics]
-                [old-running-total : Nonnegative-Float]
-                [js : Indexes])
-              : (values statistics Positive-Float)
-              (values (update-statistics old-stats
-                                         (array-ref e-arr js)
-                                         (array-ref w-arr js))
-                      ;; TODO consider flvector-sums
-                      (+ old-running-total (array-ref e*w-arr js))))
-            (λ ([stats : statistics]
-                [running-total : Positive-Float])
-              : Nonnegative-Float
-              (define bias-mode #true) ;; correct for frequency weights
-              (* (statistics-variance stats #:bias bias-mode)
-                 (ann (/ running-total grand-total) Nonnegative-Float)))))
-    make-relevance-class-array))
-
-
+(: make-relevance-class-array (-> (Array Positive-Integer)
+                                  (Array Positive-Integer)
+                                  (Array Float) ;; Positive-Float
+                                  Positive-Float
+                                  (Array Float))) ;; Nonnegative-Float)
+(define (make-relevance-class-array e-arr w-arr e*w-arr grand-total)
+  (: ->r-c-weighted-variance (-> statistics Positive-Float Nonnegative-Float))
+  (define (->r-c-weighted-variance stats running-total)
+    (define bias-mode #true) ;; correct for frequency weights
+    (* (statistics-variance stats #:bias bias-mode)
+       (ann (/ running-total grand-total) Nonnegative-Float)))
+  (: get-this-stats (-> statistics Indexes statistics))
+  (define (get-this-stats old-stats js)
+    (update-statistics old-stats
+                       (array-ref e-arr js)
+                       (array-ref w-arr js)))
+  (define e*w-running-totals
+    (flvector-sums (flarray-data (array->flarray e*w-arr))))
+  (define shape (array-shape e-arr))
+  (define ret
+    (array->flarray (make-array shape 0.0)))
+  (define data
+    (flarray-data ret))
+  (for/fold ([stats : statistics empty-statistics])
+            ([js : Indexes (in-array-indexes shape)])
+    (let* ([j (vector-ref js 0)]
+           [running-total (assert (flvector-ref e*w-running-totals j)
+                                  positive?)]
+           [stats (get-this-stats stats js)])
+      (flvector-set! data
+                     j
+                     (->r-c-weighted-variance stats running-total))
+      stats))
+  ret)
 
         
 (: make-slicer (-> (Listof Slice-Spec) (∀ (A) (-> (Array A) (Array A)))))
