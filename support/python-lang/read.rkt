@@ -1,36 +1,47 @@
-#lang racket
+#lang typed/racket
 
-(require python-tokenizer
-         syntax/parse/define)
+(require syntax/parse/define)
 
 (provide python-body-read-syntax
          python-body-read)
 
 ;; TODO: un-escape doc-strings
 
+(: python-body-read-syntax (-> Any Input-Port (Listof Syntax)))
 (define (python-body-read-syntax src in)
-  (parse
-   (enforest
-    (tokenize src in))))
+  (map (λ ([d : Datum])
+         ;; otherwise TR has trouble generating a contract
+         (datum->syntax #f d))
+       (parse
+        (enforest
+         (tokenize src in)))))
 
+(: python-body-read (-> Input-Port (Listof Sexp)))
 (define (python-body-read in)
-  (syntax->datum
-   (datum->syntax
-    (python-body-read-syntax #f in))))
+  (map syntax->datum
+       (python-body-read-syntax #f in)))
 
-(define (enforest tokens)
-  (tag-lines
-   (tag-paren-shapes
-    (group-suites
-     (drop-leading-newlines
-      (strip-comments tokens))))))
+(define-simple-macro (define-token-structs
+                       [sym-type:id sym->ctor:id ->datum:id]
+                       name:id ...)
+  (begin (define-type sym-type
+           (U 'name ...))
+         (: sym->ctor (-> sym-type (-> (Syntaxof String)
+                                       Raw-Token)))
+         (define sym->ctor
+           (match-lambda
+             ['name name] ...))
+         (: ->datum (-> Raw-Token Datum))
+         (define ->datum
+           (match-lambda
+             [(name e) e] ...))
+         (struct name ([e : (Syntaxof String)])
+           #:transparent)
+         ...))
 
-(define (parse enforested)
-  (match enforested
-    [(list-rest `(STRING ,docstring) enforested)
-     (cons docstring (parse-continue enforested))]
-    [_
-     (parse-continue enforested)]))
+(define-token-structs [Token-Symbol symbol->constructor token-struct->datum]
+  NAME NUMBER STRING OP COMMENT NL NEWLINE
+  DEDENT INDENT ERRORTOKEN ENDMARKER)
 
 (define-match-expander syntax:
   (syntax-parser
@@ -39,64 +50,118 @@
 (define-match-expander name:
   (syntax-parser
     [(_ pat ...+)
-     #'(list 'NAME (syntax: pat ...))]))
+     #'(NAME (syntax: pat ...))]))
 (define-match-expander op:
   (syntax-parser
     [(_ pat ...+)
-     #'(list 'OP (syntax: pat ...))]))
+     #'(OP (syntax: pat ...))]))
+
+(define-type Token
+  (U NAME NUMBER STRING OP ERRORTOKEN))
+
+(define-type Newline-Token
+  (U NL NEWLINE ENDMARKER))
+(: newline-token? (-> Any Boolean : Newline-Token))
+(define (newline-token? it)
+  (or (NEWLINE? it)
+      (NL? it)
+      (ENDMARKER? it)))
+
+(define-type (List+of A)
+  (Pairof A (Listof A)))
+
+(struct (A) suite ([body : (Listof A)])
+  #:transparent)
+
+(struct line ([body : (List+of (U Token Parens*))])
+  #:transparent)
+
+(define-type Enforested
+  (U line (suite Enforested)))
+
+(define-type Parens*
+  (U parens braces brackets))
+(struct parens ([body : (Listof (Listof (U Token Parens*)))])
+  #:transparent)
+(struct braces ([body : (Listof (Listof (U Token Parens*)))])
+  #:transparent)
+(struct brackets ([body : (Listof (Listof (U Token Parens*)))])
+  #:transparent)
+
+(define-type Raw-Token
+  (U Without-Comments COMMENT))
+
+(: datum-show (-> (U Token Parens* Enforested) Datum))
+(define (datum-show it)
+  (define (show* [lst : (Listof (U Token Parens*))]) : Datum
+    (map datum-show lst))
+  (cond
+    [(parens? it)
+     (cons '#%parens (map show* (parens-body it)))]
+    [(brackets? it)
+     (cons '#%brackets (map show* (brackets-body it)))]
+    [(braces? it)
+     (cons '#%braces (map show* (braces-body it)))]
+    [(line? it)
+     (cons '#%line (map datum-show (line-body it)))]
+    [(suite? it)
+     (cons '#%suite (map datum-show (suite-body it)))]
+    [else
+     (token-struct->datum (cast it Token))]))
 
 
-(define (parse-continue enforested)
-  (filter-map (λ (line)
-                (match line
-                  [(list-rest '#%line
-                              (name: "import" "from")
-                              _)
-                   (parse-import line)]
-                  [(or (list-rest '#%line
-                                  (name: "async")
-                                  (name: "def")
-                                  _)
-                       (list-rest '#%line
-                                  (name: "def")
-                                  _))
-                   (parse-def line)]
-                  [(list-rest '#%line (name: "class") _)
-                   (parse-class line)]
-                  [_
-                   #f]))
-              enforested))
+;                                               
+;                                               
+;                                               
+;                                               
+;   ;;         ;;                 ;;            
+;   ;;         ;;                               
+;  ;;;;; ;;;   ;;  ;; ;;   ; ;;;  ;;;;;;;   ;;  
+;   ;;  ;   ;  ;;  ; ;  ;  ;;  ;  ;;   ;   ;  ; 
+;   ;;  ;   ;  ;; ;  ;  ;  ;;  ;; ;;   ;   ;  ; 
+;   ;; ;;   ;; ;;;; ;;;;;; ;;  ;; ;;  ;   ;;;;;;
+;   ;;  ;   ;  ;;  ; ;     ;;  ;; ;; ;     ;    
+;    ;  ;   ;  ;;  ; ;     ;;  ;; ;; ;     ;    
+;    ;;; ;;;   ;;   ; ;;;  ;;  ;; ;;;;;;;   ;;; 
+;                                               
+;                                               
+;                                               
+;                                               
 
-(define handle-attribute-docstrings
-  (match-lambda
-    [(list-rest (list-rest '#%line
-                           `(NAME ,name)
-                           `(OP ,(app syntax-e "="))
-                           _)
-                (list '#%line
-                      `(STRING ,docstring))
-                enforested)
-     (cons `(= ,name ,docstring)
-           (parse-continue enforested))]
-    [enforested
-     enforested]))
-
+(require/typed
+ python-tokenizer
+ [generate-tokens
+  (-> Input-Port (Sequenceof (List Token-Symbol
+                                   String
+                                   (List Natural Natural)
+                                   (List Natural Natural)
+                                   String)))])
+(: tokenize (-> Any Input-Port (Listof Raw-Token)))
 (define (tokenize src in)
-  (define line-start-pos-tbl
+  (define line-start-pos-tbl : (HashTable Natural Natural)
     (let ([in (peeking-input-port in)])
       (port-count-lines! in)
-      (for/hasheqv ([i (in-naturals 1)])
+      (let loop ([hsh : (HashTable Natural Natural) #hasheqv()]
+                 [i : Natural 1])
         (define-values [ln col pos]
           (port-next-location in))
-        #:final (eof-object? (read-line in 'any))
-        (values i pos))))
-  (for/list ([lst (generate-tokens in)])
+        (assert pos)
+        (let* ([hsh (hash-set hsh i pos)])
+          (if (eof-object? (read-line in 'any))
+              hsh
+              (loop hsh (add1 i)))))))
+  (for/list ([lst : (List Token-Symbol
+                          String
+                          (List Natural Natural)
+                          (List Natural Natural)
+                          String)
+                  (generate-tokens in)])
     ;; generate-tokens is lazy
     (match-define (list type
                         datum-lexeme
                         (list start-ln start-col)
                         (list end-ln end-col)
-                        current-line-str)
+                        _)
       lst)
     (define start-pos
       (+ start-col (hash-ref line-start-pos-tbl start-ln)))
@@ -106,171 +171,92 @@
       (- end-pos start-pos))
     (define loc
       (vector-immutable src start-ln start-col start-pos span))
-    (list (cond
-            [(and (eq? 'OP type)
-                  (regexp-match? #px"^[a-zA-Z_]\\w*$" datum-lexeme))
-             ;; python-tokenizer improperly classifies NAMEs
-             ;; beginning with _ as OPs
-             'NAME]
-            [else
-             type])
-          (datum->syntax #f datum-lexeme loc))))
+    ((symbol->constructor
+      (cond
+        [(and (eq? 'OP type)
+              (regexp-match? #px"^[a-zA-Z_]\\w*$" datum-lexeme))
+         ;; python-tokenizer improperly classifies NAMEs
+         ;; beginning with _ as OPs
+         'NAME]
+        [else
+         type]))
+     (cast (datum->syntax #f datum-lexeme loc)
+           (Syntaxof String)))))
 
-(define (drop-leading-newlines tokens)
-  (dropf tokens (match-lambda
-                  [(list (or 'NEWLINE 'NL) _) #t]
-                  [_ #f])))
+;                                
+;                                
+;                                
+;                                
+;                                
+;                                
+;   ; ;;    ;;    ;; ;  ;; ; ;;  
+;   ;;  ;  ;  ;   ;;; ;;  ; ;  ; 
+;   ;;  ;     ;;  ;;   ;    ;  ; 
+;   ;;  ;;  ;;;;  ;;    ;; ;;;;;;
+;   ;;  ;  ;  ;;  ;;      ;;;    
+;   ;;  ; ;;  ;;  ;;  ;   ; ;    
+;   ;;;;   ;;; ;  ;;   ;;;   ;;; 
+;   ;;                           
+;   ;;                           
+;   ;;                           
+;                                
 
-(define (strip-comments tokens)
-  (filter (match-lambda
-            [`(COMMENT ,_) #f]
-            [_ #t])
-          tokens))
-  
-(define group-suites
-  (letrec
-      ([group-within
-        (λ (tokens)
-          (let loop ([acc '(#%suite)]
-                     [tokens tokens])
-          (match tokens
-            [(list-rest `(DEDENT ,_) tokens)
-             (values (reverse acc) tokens)]
-            [(list-rest (list (or 'NEWLINE 'NL) _)
-                        ...
-                        `(INDENT ,_)
-                        tokens)
-             (let-values ([{this tokens}
-                           (group-within tokens)])
-               (loop (cons this acc) tokens))]
-            [(list-rest this tokens)
-             (loop (cons this acc) tokens)])))]
-       [group-suites
-        (match-lambda
-          ['()
-           '()]
-          [(list-rest (list (or 'NEWLINE 'NL) _)
-                      ...
-                      `(INDENT ,_)
-                      tokens)
-           (let-values ([{this tokens}
-                         (group-within tokens)])
-             (cons this (group-suites tokens)))]
-          [(list-rest (and this (not `(DEDENT ,_)))
-                      tokens)
-           (cons this (group-suites tokens))])])
-    group-suites))
+(: parse (-> (Listof Enforested) (Listof Datum)))
+(define (parse enforested)
+  (match enforested
+    [(cons (line (list (STRING docstring)))
+           enforested)
+     (cons docstring (parse-continue enforested))]
+    [_
+     (parse-continue enforested)]))
 
-(define tag-paren-shapes
-  (letrec
-      ([tag-paren-shapes
-        (match-lambda
-          ['()
-           '()]
-          [(list-rest (list-rest '#%suite suite-body) tokens)
-           (cons (cons '#%suite (tag-paren-shapes suite-body))
-                 (tag-paren-shapes tokens))]
-          [(list-rest `(OP ,(and open (app syntax-e
-                                           (or "(" "[" "{"))))
-                      tokens)
-           (let-values ([{this tokens}
-                         (group-inside open tokens)])
-             (cons this (tag-paren-shapes tokens)))]
-          [(list-rest this tokens)
-           (cons this (tag-paren-shapes tokens))])]
-       [group-inside
-        (λ (open-stx tokens)
-          (define-values [tag close]
-            (match (syntax-e open-stx)
-              ["(" (values '#%parens ")")]
-              ["[" (values '#%brackets "]")]
-              ["{" (values '#%braces "}")]))
-          (let loop ([acc null]
-                     [tokens tokens])
-            (match tokens
-              ['()
-               '()]
-              [(list-rest `(OP ,(app syntax-e (== close)))
-                          tokens)
-               (values (cons tag (fixup-group (reverse acc)))
-                       tokens)]
-              [(list-rest `(OP ,(and open (app syntax-e
-                                               (or "(" "[" "{"))))
-                tokens)
-               (let-values ([{this tokens}
-                             (group-inside open tokens)])
-                 (loop (cons this acc) tokens))]
-              [(list-rest this tokens)
-               (loop (cons this acc) tokens)])))]
-       [fixup-group
-        (λ (grp)
-          (let partition-commas
-            ([acc null]
-             [grp (filter (match-lambda
-                            [(cons (or 'NEWLINE 'NL) _)
-                             #f]
-                            [_
-                             #t])
-                          grp)])
-            (match grp
-              ['()
-               (list (reverse acc))]
-              [(cons `(OP ,(app syntax-e ",")) grp)
-               (cons (reverse acc)
-                     (partition-commas null grp))]
-              [(cons this grp)
-               (partition-commas (cons this acc) grp)])))])
-       tag-paren-shapes))
-            
+(: parse-continue (-> (Listof Enforested) (Listof Datum)))
+(define (parse-continue enforested)
+  (match enforested
+    ['()
+     '()]
+    [(list-rest (line (and ln (cons (name: "import" "from") _)))
+                enforested)
+     (cons (parse-import ln)
+           (parse-continue enforested))]
+    [(list-rest (line (and ln (or (list-rest (name: "async")
+                                             (name: "def")
+                                             _)
+                                  (list-rest (name: "def")
+                                             _))))
+                (suite s-b)
+                enforested)
+     (cons (parse-def ln s-b)
+           (parse-continue enforested))]
+    [(list-rest (line (and ln (cons (name: "class") _)))
+                (suite s-b)
+                enforested)
+     (cons (parse-class ln s-b)
+           (parse-continue enforested))]
+    [(list-rest (line (list-rest (name: n) (op: "=") _))
+                (line (STRING docstring))
+                enforested)
+     (cons (cons `(= ,n ,docstring))
+           enforested)]
+    [(list-rest _ enforested)
+     (parse-continue enforested)]))
 
-(define tag-lines
-  (letrec ([tag-lines
-            (λ (tokens)
-              (let loop ([acc null]
-                         [tokens tokens])
-                (match tokens
-                  ['()
-                   (continue acc #f)]
-                  [(cons (list (or 'NEWLINE 'NL 'ENDMARKER)
-                               _)
-                         tokens)
-                   (continue acc tokens)]
-                  [(cons (cons '#%suite suite-body)
-                         tokens)
-                   (define suite-body* (tag-lines suite-body))
-                   (loop (if (null? suite-body*)
-                             acc
-                             (cons (cons '#%suite suite-body*)
-                                   acc))
-                         tokens)]
-                  [(cons this tokens)
-                   (loop (cons this acc) tokens)])))]
-           [continue
-            (λ (acc maybe-tokens)
-              (define (get-rest)
-                (if maybe-tokens
-                    (tag-lines maybe-tokens)
-                    null))
-              (match acc
-                ['()
-                 (get-rest)]
-                [_
-                 (cons (cons '#%line (reverse acc))
-                       (get-rest))]))])
-    tag-lines))
-
-
+(: parse-import (-> (List+of (U Token Parens*))
+                    Datum))
 (define parse-import
   (match-lambda
-    [(list-rest '#%line
-                (name: "import")
-                lst) ;; dotted-as?-name+
+    [(cons (name: "import") lst)
      (letrec ([start
+               : (-> (Listof (U Token Parens*))
+                     (Listof Datum))
                (match-lambda
                  ['() '()]
                  [(cons (name: init) lst)
                   (loop (list init) lst)])]
               [loop
+               : (-> (List+of String)
+                     (Listof (U Token Parens*))
+                     (Listof Datum))
                (λ (acc lst)
                  (define (finish)
                    (cons '|.| (reverse acc)))
@@ -289,17 +275,16 @@
                    [(list-rest (op: ".") (name: n) lst)
                     (loop (cons n acc) lst)]))])
        (cons 'import (start lst)))]
-    [(list-rest '#%line
-                (name: from)
-                lst)
+    [(cons (name: "from") lst)
      (let-values
          ([{acc lst}
            (match lst
              [(cons (op: (and rel "." "..")) lst)
+              (assert rel)
               (values (list rel) lst)]
              [_
               (values null lst)])])
-       (let loop ([acc acc]
+       (let loop ([acc : (Listof String) acc]
                   [lst lst])
          (match lst
            [(cons (name: "import") lst)
@@ -310,39 +295,285 @@
            [(cons (name: n) lst)
             (loop (cons n acc) lst)])))]))
 
-(define parse-import-from-rhs
-  (letrec ([parse-import-from-rhs
-            (match-lambda
-              [(list (op: "*"))
-               '(#:*)]
-              [(list (op: "(") lst ... (op: ")"))
-               (help lst)]
-              [lst
-               (help lst)])]
-           [help
-            (match-lambda
-              ['()
-               null]
-              [(list-rest (name: n)
-                          (name: "as")
-                          (name: as)
-                          lst)
-               (list* n '#:as as (continue lst))]
-              [(list-rest (name: n) lst)
-               (cons n (continue lst))])]
-           [continue
-            (match-lambda
-              ['()
-               null]
-              [(cons (op: ",") lst)
-               (help lst)])])
-    parse-import-from-rhs))
-            
-  
-  
+(: parse-import-from-rhs (-> (Listof (U Token Parens*))
+                             (Listof Datum)))
+(define (parse-import-from-rhs lst)
+  (: group-commas (-> (Listof (U Token Parens*))
+                      (Listof (Listof (U Token Parens*)))))
+  (define group-commas
+    (match-lambda
+      ['()
+       '()]
+      [(cons this lst)
+       (let loop ([acc (list this)]
+                  [lst lst])
+         (match lst
+           ['()
+            (list (reverse acc))]
+           [(cons (op: ",") lst)
+            (cons (reverse acc) (group-commas lst))]
+           [(cons this lst)
+            (loop (cons this acc) lst)]))]))
+  (: help (-> (Listof (Listof (U Token Parens*)))
+              (Listof Datum)))
+  (define (help lst)
+    (append*
+     (map
+      (match-lambda
+        [(list-rest (name: n)
+                    (name: "as")
+                    (name: as))
+         (list n '#:as as)]
+        [(list (name: n))
+         (list n)])
+      lst)))
+  (match lst
+    [(list (op: "*"))
+     '(#:*)]
+    [(list (parens lst))
+     (help lst)]
+    [_
+     (help (group-commas lst))]))
 
-(define parse-def values)
 
-(define parse-class values)
+(: parse-def (-> (List+of (U Token Parens*))
+                 (Listof Enforested)
+                 Datum))
+(define (parse-def lst the-suite-body)
+  (let*-values
+      ([{async? lst}
+        (match lst
+          [(list-rest (name: "def")
+                      lst)
+           (values #f lst)]
+          [(list-rest (name: "async")
+                      (name: "def")
+                      lst)
+           (values #t lst)])]
+       [{name params lst}
+        (match lst
+          [(list (name: n)
+                 (parens params)
+                 (op: ":"))
+           (values n params lst)])]
+       [{params}
+        (let loop : (Listof Datum) ([params params])
+          (match params
+            ['()
+             '()]
+            [(cons (list (name: n)) params)
+             (cons n (loop params))]
+            [(cons (list (op: "*") (name: n))
+                   params)
+             (list* '#:* n (loop params))]
+            [(cons (list (op: "**") (name: n))
+                   params)
+             (list* '#:** n (loop params))]
+            [(cons (list-rest (name: n) (op: "=") _)
+                   params)
+             (cons (list n) (loop params))]))]
+       [{docstring/false the-suite-body}
+        (match the-suite-body
+          [(cons (line (list (STRING docstring)))
+                 the-suite-body)
+           (values docstring the-suite-body)]
+          [_
+           (values #f the-suite-body)])]
+       [{maybe-return}
+        (parse-maybe-return the-suite-body)])
+    `(def ,name ,params
+       ,@(if async? '(#:async) null)
+       ,docstring/false
+       ,@(if maybe-return `(#:return ,maybe-return) null))))
 
+(: parse-maybe-return (-> (Listof Enforested) (U #f Datum)))
+(define (parse-maybe-return the-suite-body)
+  (map datum-show the-suite-body))
+
+(: parse-class (-> (List+of (U Token Parens*))
+                   (Listof Enforested)
+                   Datum))
+(define (parse-class ln the-suite-body)
+  (list '#%class
+        (map datum-show ln)
+        (map datum-show the-suite-body)))
+
+;                                              
+;                                              
+;                                              
+;                                              
+;                 ;;;                       ;; 
+;                ;;                         ;; 
+;    ;;   ; ;;; ;;;;  ;;;   ;; ;  ;;    ;; ;;;;
+;   ;  ;  ;;  ;  ;;  ;   ;  ;;;  ;  ; ;;  ; ;; 
+;   ;  ;  ;;  ;; ;;  ;   ;  ;;   ;  ;  ;    ;; 
+;  ;;;;;; ;;  ;; ;; ;;   ;; ;;  ;;;;;;  ;;  ;; 
+;   ;     ;;  ;; ;;  ;   ;  ;;   ;        ;;;; 
+;   ;     ;;  ;; ;;  ;   ;  ;;   ;    ;   ;  ; 
+;    ;;;  ;;  ;; ;;   ;;;   ;;    ;;;  ;;;   ;;
+;                                              
+;                                              
+;                                              
+;                                              
+
+
+(: enforest (-> (Listof Raw-Token) (Listof Enforested)))
+(define (enforest tokens)
+  (tag-lines
+   (group-suites
+    (tag-paren-shapes
+     (strip-comments tokens)))))
+
+(define-type Without-Comments
+  (U Token Newline-Token DEDENT INDENT))
+
+(define-type With-Paren-Shapes
+  (U Parens* Without-Comments))
+
+(define-type With-Initial-Suites
+  (U Token Newline-Token Parens* (suite With-Initial-Suites)))
+
+(: strip-comments (-> (Listof Raw-Token)
+                      (Listof Without-Comments)))
+(define (strip-comments tokens)
+  (filter (ann (λ (it) (not (COMMENT? it)))
+               (-> Raw-Token Boolean : Without-Comments))
+          tokens))
+
+(: tag-paren-shapes (-> (Listof Without-Comments)
+                        (Listof With-Paren-Shapes)))
+(define (tag-paren-shapes tokens)
+  (: group-inside (-> String
+                      (Listof Without-Comments)
+                      (values Parens* (Listof Without-Comments))))
+  (define (group-inside open tokens)
+    (define-values [tag close]
+      (match open
+        ["(" (values parens ")")]
+        ["[" (values brackets "]")]
+        ["{" (values braces "}")]))
+    (let loop ([acc : (Listof With-Paren-Shapes) null]
+               [tokens : (Listof Without-Comments) tokens])
+      (match tokens
+        [(cons (op: (== close)) tokens)
+         (values (tag (fixup-group (reverse acc))) tokens)]
+        [(cons (op: (and open (or "(" "[" "{"))) tokens)
+         (assert open)
+         (let-values ([{this tokens}
+                       (group-inside open tokens)])
+           (loop (cons this acc) tokens))]
+        [(cons this tokens)
+         (loop (cons this acc) tokens)])))
+  (define-type Without-Comments+Parens*
+    (U Without-Comments Parens*))
+  (: fixup-group (-> (Listof Without-Comments+Parens*)
+                     (Listof (Listof (U Token Parens*)))))
+  (define (fixup-group grp)
+    (define-type Sans-NL
+      (U Token DEDENT INDENT Parens*))
+    (let* ([grp
+            : (Listof Sans-NL)
+            (filter (ann (λ (it)
+                           (not (newline-token? it)))
+                         (-> Without-Comments+Parens* Boolean : Sans-NL))
+                    grp)]
+           [grp
+            (let partition-commas : (Listof (Listof (U Token Parens*)))
+              ([acc : (Listof (U Token Parens*)) null]
+               [grp : (Listof (U Token Parens* DEDENT INDENT)) grp])
+              (match grp
+                ['()
+                 (list (reverse acc))]
+                [(cons (op: ",") grp)
+                 (cons (reverse acc)
+                       (partition-commas null grp))]
+                [(cons this grp)
+                 (assert (not (or (DEDENT? this)
+                                  (INDENT? this))))
+                 (partition-commas (cons this acc)
+                                   grp)]))])
+      (match grp
+        ['(())
+         null]
+        [_
+         grp])))
+  (match tokens
+    ['()
+     '()]
+    [(cons (op: (and open (or "(" "[" "{"))) tokens)
+     (assert open)
+     (let-values ([{this tokens}
+                   (group-inside open tokens)])
+       (cons this (tag-paren-shapes tokens)))]
+    [(cons this tokens)
+     (cons this (tag-paren-shapes tokens))]))
+
+
+
+(: group-suites (-> (Listof With-Paren-Shapes)
+                    (Listof With-Initial-Suites)))
+(define (group-suites tokens)
+  (: group-within (-> (Listof With-Paren-Shapes)
+                      (values (suite With-Initial-Suites)
+                              (Listof With-Paren-Shapes))))
+  (define (group-within tokens)
+    (let loop ([acc : (Listof With-Initial-Suites) null]
+               [tokens : (Listof With-Paren-Shapes) tokens])
+      (match-let ([(cons this tokens) tokens])
+        (cond
+          [(DEDENT? this)
+           (values (suite (reverse acc)) tokens)]
+          [(INDENT? this)
+           (let-values ([{this tokens}
+                         (group-within tokens)])
+             (loop (cons this acc) tokens))]
+          [else
+           (loop (cons this acc) tokens)]))))
+  (match tokens
+    ['()
+     '()]
+    [(cons this tokens)
+     (cond
+       [(INDENT? this)
+        (let-values ([{this tokens}
+                      (group-within tokens)])
+          (cons this (group-suites tokens)))]
+       [else
+        (assert (not (DEDENT? this)))
+        (cons this (group-suites tokens))])]))
+      
+
+(: reverse+ (∀ (A) (-> (List+of A) (List+of A))))
+(define (reverse+ lst)
+  (let loop ([acc : (List+of A) (list (car lst))]
+             [lst : (Listof A) (cdr lst)])
+    (if (null? lst)
+        acc
+        (loop (cons (car lst) acc)
+              (cdr lst)))))
+
+(: tag-lines (-> (Listof With-Initial-Suites)
+                 (Listof Enforested)))
+(define (tag-lines tokens)
+  (let loop ([acc : (Listof (U Token Parens*)) null]
+             [tokens : (Listof With-Initial-Suites) tokens])
+    (define (finish [get-rest : (-> (Listof Enforested))])
+      (if (null? acc)
+          (get-rest)
+          (cons (line (reverse+ acc))
+                (get-rest))))
+    (if (null? tokens)
+        (finish (λ () null))
+        (let ([this (car tokens)]
+              [tokens (cdr tokens)])
+          (cond
+            [(newline-token? this)
+             (finish (λ () (tag-lines tokens)))]
+            [(suite? this)
+             (finish (λ ()
+                       (cons (suite (tag-lines
+                                     (suite-body this)))
+                             (tag-lines tokens))))]
+            [else
+             (loop (cons this acc) tokens)])))))
 
