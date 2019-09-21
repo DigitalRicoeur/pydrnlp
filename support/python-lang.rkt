@@ -31,60 +31,62 @@
 ;;         stdlib inclusion"
 ;; https://bugs.python.org/issue35651
 
+(module indentation racket
+  (provide determine-spaces)
+  (define (determine-spaces drr pos)
+    (define para
+      (send drr position-paragraph pos))
+    (define start-pos
+      (send drr paragraph-start-position para))
+    (define end-pos
+      (send drr paragraph-end-position para))
+    (for*/sum ([pos (in-range start-pos end-pos 1)]
+               [ch (in-value (send drr get-character pos))]
+               [num (in-value (case ch
+                                [(#\space) 1]
+                                [(#\tab) 4]
+                                [else #f]))]
+               #:break (not num))
+      num)))
+
 (module reader syntax/module-reader
   pydrnlp/support/python-lang
   #:read python-body-read
   #:read-syntax python-body-read-syntax
   #:whole-body-readers? #true
+  #:info (λ (key default default-info)
+           (define (nope)
+             (default-info key default))
+           (case key
+             [(color-lexer)
+              color-lexer]
+             [(drracket:indentation)
+              (dynamic-require indentation-mpi
+                               'determine-spaces
+                               nope)]
+             [else
+              (nope)]))
   
-  (require racket/match
-           python-tokenizer)
+  (require "python-lang/read.rkt"
+           racket/runtime-path
+           (for-syntax racket/base)
+           racket/port)
 
-  ;; FIXME python-tokenizer is based on
-  ;;   python2, not python3, but seems to work for now.
-  (define (python-body-read in)
-    (map syntax->datum
-         (python-body-read-syntax #f in)))
+  (define-runtime-module-path-index indentation-mpi
+    '(submod ".." indentation))
   
-  (define (python-body-read-syntax src in)
-    (for/list ([token (generate-tokens in)])
-      (match-define (list type
-                          lexeme
-                          (list start-ln start-col)
-                          (list end-ln end-col)
-                          current-line-str)
-        token)
-      ;; TODO: convert lexeme to datum (e.g. un-escape strings)
-      (define loc
-        ;; TODO: position span
-        (vector-immutable src start-ln start-col #f #f))
-      (define (->syntax datum)
-        ;; ?? current-line-str as property ??
-        (datum->syntax #f datum loc))
-      (->syntax (list (->syntax type)
-                      (->syntax lexeme)))))
-  
+  (define (color-lexer in)
+    (cond
+      [(eof-object? (peek-char in))
+       (values eof 'eof #f #f #f)]
+      [else
+       (define-values [line col pos]
+         (port-next-location in))
+       (define lexeme
+         (port->string in))
+       (values lexeme 'text #f
+               pos
+               (+ pos (string-length lexeme)))]))
+
   #|END module reader|#)
-#|
-(begin-for-syntax
-  (define-literal-set token-type-literals
-    #:datum-literals {NAME NUMBER STRING OP COMMENT
-                           NL NEWLINE DEDENT INDENT
-                           ERRORTOKEN ENDMARKER}
-    ())
-  (define-splicing-syntax-class dotted-name
-    #:literal-sets {token-type-literals}
-    (pattern (~seq (NAME :str)
-                   (~seq (OP ".") (NAME :str)) ...)))
-  (define-splicing-syntax-class import-as-names-nodots
-    #:literal-sets {token-type-literals}
-    (pattern (~seq (NAME :str)
-                   (~optional (~seq (NAME "as") 
-  (define-splicing-syntax-class import-stmnt
-    #:literal-sets {token-type-literals}
-    (pattern (~seq (NAME "import")
-                   (NAME mod:str)
-                   (~seq (OP ".") (NAME mod:str)) ...
-                   
-  #|END begin-for-syntax|#)
-|#
+
