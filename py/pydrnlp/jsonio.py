@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#lang pydrnlp/support/python-lang # -*- coding: utf-8 -*-
 """Provides classes for programs that loop over JSON IO.
 
 This module imposes the invariant that JSON values must be

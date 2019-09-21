@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#lang pydrnlp/support/python-lang # -*- coding: utf-8 -*-
 """Uniform, lazy loading of SpaCy language models
 
 The primary entry point for Spacy functionality

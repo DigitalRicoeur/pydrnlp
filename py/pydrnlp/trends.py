@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#lang pydrnlp/support/python-lang # -*- coding: utf-8 -*-
 """Core engine for the "Trends" tool.
 
 Types used in this module:
