@@ -2,7 +2,7 @@
 """Provides classes for programs that loop over JSON IO.
 
 This module imposes the invariant that JSON values must be
-delimited by newlines (i.e. "\\n") and that the JSON values
+delimited by newlines (i.e. "\n") and that the JSON values
 in input may not use the newline character internally,
 even where insignificant whitespace is allowed by the JSON spec.
 Using newlines as a delimiter avoids a limitation of Python

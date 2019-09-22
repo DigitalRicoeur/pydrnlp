@@ -1,17 +1,19 @@
 #lang typed/racket
 
-(require syntax/parse/define)
-
 (provide python-body-read-syntax
          python-body-read)
 
 ;; TODO: un-escape doc-strings
 
+(require syntax/parse/define)
+
+;; TR has trouble generating a contract for Datum
+;; because it can include immutable stuff.
+
 (: python-body-read-syntax (-> Any Input-Port (Listof Syntax)))
 (define (python-body-read-syntax src in)
   (map (λ ([d : Datum])
-         ;; otherwise TR has trouble generating a contract
-         (datum->syntax #f d))
+         (strip-context (datum->syntax #f d)))
        (parse
         (enforest
          (tokenize src in)))))
@@ -34,7 +36,7 @@
          (: ->datum (-> Raw-Token Datum))
          (define ->datum
            (match-lambda
-             [(name e) e] ...))
+             [(name e) (list 'name e)] ...))
          (struct name ([e : (Syntaxof String)])
            #:transparent)
          ...))
@@ -91,11 +93,16 @@
 (define-type Raw-Token
   (U Without-Comments COMMENT))
 
-(: datum-show (-> (U Token Parens* Enforested) Datum))
+(define-type Showable
+  (U Token Parens* Enforested (Listof Showable)))
+
+(: datum-show (-> Showable Datum))
 (define (datum-show it)
-  (define (show* [lst : (Listof (U Token Parens*))]) : Datum
+  (define (show* [lst : (Listof Showable)]) : Datum
     (map datum-show lst))
   (cond
+    [(list? it)
+     (show* it)]
     [(parens? it)
      (cons '#%parens (map show* (parens-body it)))]
     [(brackets? it)
@@ -183,6 +190,93 @@
      (cast (datum->syntax #f datum-lexeme loc)
            (Syntaxof String)))))
 
+(define the-tab-replacement-string
+  (string->immutable-string (make-string 8 #\space)))
+
+(: clean-docstring (-> (Syntaxof String) (Syntaxof String)))
+(define (clean-docstring stx)
+  (define (empty-string? [str : String])
+    (not (non-empty-string? str)))
+  (match-let*
+      ([str (syntax-e stx)]
+       [(regexp "(?<=^\"\"\").*(?=\"\"\"$)" (list trimmed))
+        (regexp-replace* #rx"\t" str the-tab-replacement-string)]
+       [(cons line0 lines)
+        (regexp-split #rx"\n" trimmed)]
+       [line0
+        (string-trim line0 #rx" +" #:right? #f)]
+       [indexes
+        (for/list : (Listof (U #f Index)) ([line (in-list lines)])
+          (let ([pr (regexp-match-positions #rx"[^ ]" line)])
+            (and pr (caar pr))))]
+       [min-index
+        (or (foldl (λ ([this : (U #f Index)]
+                       [prev : (U #f Index)])
+                     (if (and this prev)
+                         (min this prev)
+                         (or this prev)))
+                   #f
+                   indexes)
+            0)]
+       [lines
+        (for/list : (Listof String) ([line : String (in-list lines)]
+                                     [idx : (U #f Index) (in-list indexes)])
+          ;; we know non-blank lines are long enough
+          (if idx
+              (substring line min-index)
+              ""))]
+       [lines
+        (cons line0 lines)]
+       [lines
+        (dropf-right (dropf lines empty-string?) empty-string?)])
+    (cast (datum->syntax* stx (string-join lines "\n"))
+          (Syntaxof String))))
+
+;                                                               
+;                                                               
+;                                                               
+;                                                               
+;                     ;;                  ;;           ;;       
+;                     ;;                  ;;           ;;       
+;    ;; ;    ; ; ;;; ;;;;; ;;   ;;  ;;    ;;;;;   ;;   ;; ; ;;  
+;  ;;  ; ;  ;  ;;  ;  ;;  ;  ;   ;  ;     ;;  ;  ;  ;  ;; ;;  ; 
+;   ;    ;  ;  ;;  ;; ;;     ;;   ;;      ;;  ;; ;  ;  ;; ;;  ; 
+;    ;;  ;  ;  ;;  ;; ;;   ;;;;   ;       ;;  ;;;;;;;; ;; ;;  ;;
+;      ;; ; ;  ;;  ;; ;;  ;  ;;   ;;      ;;  ;; ;     ;; ;;  ; 
+;  ;   ;  ;;   ;;  ;;  ; ;;  ;;  ;  ;     ;;  ;; ;     ;; ;;  ; 
+;   ;;;    ;   ;;  ;;  ;;;;;; ; ;   ;;    ;;  ;;  ;;;   ; ;;;;  
+;          ;                                              ;;    
+;         ;                                               ;;    
+;       ;;                                                ;;    
+;                                                               
+
+(: datum->syntax* (case->
+                   (-> (U (Syntaxof Any) #f) Symbol Identifier)
+                   (-> (U (Syntaxof Any) #f) Datum Syntax)))
+(define (datum->syntax* ctx v)
+  (datum->syntax ctx v ctx ctx))
+
+(: strip-context (-> Syntax Syntax))
+(define strip-context values)
+#;
+(define (strip-context v)
+  ;; like syntax/strip-context, but TR can't contract that
+  ;; this is simplified to make the types easier
+  (define (inner [v : Syntax-E]) : Syntax-E
+    (cond
+      [(list? v)
+       (map strip-context v)]
+      [(pair? v)
+       (cons (strip-context (car v))
+             (strip-context (cdr v)))]
+      [(box? v)
+       (box (strip-context (unbox v)))]
+      [(vector? v)
+       (vector-map strip-context v)]
+      [else
+       v]))
+  (datum->syntax #f (inner (syntax-e v)) v v))
+
 ;                                
 ;                                
 ;                                
@@ -206,17 +300,21 @@
   (match enforested
     [(cons (line (list (STRING docstring)))
            enforested)
-     (cons docstring (parse-continue enforested))]
+     (cons (clean-docstring docstring)
+           (parse-continue enforested))]
     [_
      (parse-continue enforested)]))
 
-(: parse-continue (-> (Listof Enforested) (Listof Datum)))
-(define (parse-continue enforested)
+(: parse-continue (->* [(Listof Enforested)]
+                       [#:for-class? Boolean]
+                       (Listof Datum)))
+(define (parse-continue enforested #:for-class? [for-class? #f])
   (match enforested
     ['()
      '()]
     [(list-rest (line (and ln (cons (name: "import" "from") _)))
                 enforested)
+     #:when (not for-class?)
      (cons (parse-import ln)
            (parse-continue enforested))]
     [(list-rest (line (and ln (or (list-rest (name: "async")
@@ -231,13 +329,14 @@
     [(list-rest (line (and ln (cons (name: "class") _)))
                 (suite s-b)
                 enforested)
+     #:when (not for-class?)
      (cons (parse-class ln s-b)
            (parse-continue enforested))]
     [(list-rest (line (list-rest (name: n) (op: "=") _))
                 (line (STRING docstring))
                 enforested)
-     (cons (cons `(= ,n ,docstring))
-           enforested)]
+     (cons `(= ,n ,(clean-docstring docstring))
+           (parse-continue enforested))]
     [(list-rest _ enforested)
      (parse-continue enforested)]))
 
@@ -376,7 +475,8 @@
         (match the-suite-body
           [(cons (line (list (STRING docstring)))
                  the-suite-body)
-           (values docstring the-suite-body)]
+           (values (clean-docstring docstring)
+                   the-suite-body)]
           [_
            (values #f the-suite-body)])]
        [{maybe-return}
@@ -388,15 +488,106 @@
 
 (: parse-maybe-return (-> (Listof Enforested) (U #f Datum)))
 (define (parse-maybe-return the-suite-body)
-  (map datum-show the-suite-body))
+  (let/ec return : (U #f Datum)
+    (define (no!) : Nothing (return #f))
+    (let*-values ([{bindings the-suite-body}
+                   (match the-suite-body
+                     [(cons (line (list-rest (NAME n) (op: "=") rhs))
+                            the-suite-body)
+                      (values (list (list n (try-parse-returned-immediate rhs no!)))
+                              the-suite-body)]
+                     [_
+                      (values null the-suite-body)])]
+                  [{raw-returned}
+                   (match the-suite-body
+                     [(cons (line (list (name: "return") raw-returned))
+                            _)
+                      raw-returned]
+                     [_
+                      (no!)])])
+      (define returned
+        (match raw-returned
+          [(brackets elems)
+           (cons 'list (map (try-parse-array-element no!) elems))]
+          [_
+           (try-parse-returned-immediate raw-returned no!)]))
+      `(let ,bindings
+         ,returned))))
+
+(: try-parse-returned-immediate (-> Showable (-> Nothing) Datum))
+(define (try-parse-returned-immediate v no!)
+  (match v
+    [(name: "False")
+     (datum->syntax* (NAME-e v) #f)]
+    [(NUMBER stx)
+     (define n (string->number (syntax-e stx)))
+     (if (exact-integer? n)
+         (datum->syntax stx n stx stx)
+         (no!))]
+    [_
+     (no!)]))
+
+(: try-parse-array-element (-> (-> Nothing)
+                               (-> (Listof (U Token Parens*))
+                                   Datum)))
+(define ((try-parse-array-element no!) elem)
+  (match elem
+    [(list (NAME n))
+     n]
+    [(list single)
+     (try-parse-returned-immediate single no!)]
+    [(cons (NAME this) parts)
+     `((|.| ,this
+            ,@(let loop : (Listof Datum)
+                ([parts : (Listof (U Token Parens*)) parts])
+                (match parts
+                  [(list-rest (op: ".")
+                              (NAME this)
+                              parts)
+                   (cons this (loop parts))]
+                  [(list (parens '()))
+                   null]
+                  [_
+                   (no!)]))))]))
+
+
 
 (: parse-class (-> (List+of (U Token Parens*))
                    (Listof Enforested)
                    Datum))
 (define (parse-class ln the-suite-body)
-  (list '#%class
-        (map datum-show ln)
-        (map datum-show the-suite-body)))
+  (define-values [name supers]
+    (match ln
+      [(list (name: "class")
+             (NAME name)
+             (parens raw-supers)
+             (op: ":"))
+       (values name (map list->dotted-name raw-supers))]
+      [(list (name: "class")
+             (NAME name)
+             (op: ":"))
+       (values name null)]))
+  (define docstring/false
+    (match the-suite-body
+      [(cons (line (list (STRING docstring))) _)
+       (clean-docstring docstring)]
+      [_
+       #f]))
+  `(class ,name ,supers
+     ,docstring/false
+     ,(parse-continue the-suite-body #:for-class? #t)))
+
+
+(: list->dotted-name (-> (Listof (U Token Parens*)) Datum))
+(define (list->dotted-name lst)
+  (match-let ([(cons (NAME n) lst) lst])
+    `(|.| ,n
+          ,@(let loop : (Listof Datum) ([lst : (Listof (U Token Parens*)) lst])
+              (match lst
+                ['()
+                 '()]
+                [(list-rest (op: ".") (NAME n) lst)
+                 (cons n (loop lst))])))))
 
 ;                                              
 ;                                              
