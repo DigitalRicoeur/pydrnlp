@@ -24,9 +24,6 @@
 
 (: sample-tree-threshold/kde (-> Sample-Tree Positive-Integer))
 (define (sample-tree-threshold/kde tree)
-  ;; inspired by numpy.linspace
-  ;; see https://github.com/numpy/numpy/issues/5437
-  ;; for lots of things I'm not dealing with
   (define x-max (sample-tree-max-element tree))
   (cond
     [(or (= x-max 0) (= x-max 1)) ;; prove Positive-Integer in else
@@ -83,7 +80,7 @@
 (define (make-uniform-array max num-samples)
   ;; inspired by numpy.linspace and linear-seq from plot/utils
   ;; see https://github.com/numpy/numpy/issues/5437
-  ;; for lots of things I'm not dealing with
+  ;; for lots of some subnormal issues I'm not dealing with
   ;; bail out on max of 0 or 1
   (define ret
     (array->flarray
@@ -117,8 +114,6 @@
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; Relative extrema are calculated by finding locations where
   ;; ``comparator(data[n], data[n+1:n+order+1])`` is True.
-  ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  ;; comparator=np.less, axis=0, order=1, mode='clip'
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; 'clip' mode means ref out of edges of array is treated as first/last element
   (define size (array-size data))

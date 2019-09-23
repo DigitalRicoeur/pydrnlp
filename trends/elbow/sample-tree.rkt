@@ -6,7 +6,6 @@
          sequence->sample-tree
          sample-tree-sequence-length
          sample-tree-max-element
-         sample-tree-effective-samples-count
          sample-tree-iterate/arrays/ascending
          sample-tree-iterate/arrays/descending
          sample-tree-iterate/flvectors/ascending
@@ -29,7 +28,7 @@
 
 ;; We can expect insertion order to be fairly random,
 ;; since it will come from iterating over lemma/count tables,
-;; so we shouldn't need to worry about balancing these.
+;; so we shouldn't need to worry about balancing these trees.
 
 (: sample-tree-add (-> Sample-Tree Positive-Integer sample-tree-node))
 (define (sample-tree-add it k)
@@ -83,15 +82,6 @@
      => sample-tree-max-element]
     [else
      (sample-tree-node-k it)]))
-
-
-(: sample-tree-effective-samples-count (-> Sample-Tree Nonnegative-Integer))
-(define (sample-tree-effective-samples-count it)
-  (if it
-      (+ (sample-tree-node-v it)
-         (sample-tree-effective-samples-count (sample-tree-node-left it))
-         (sample-tree-effective-samples-count (sample-tree-node-right it)))
-      0))
     
 
 (define-type Emit! (-> Positive-Integer Positive-Integer AnyValues))
