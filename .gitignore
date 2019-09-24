@@ -7,8 +7,8 @@ compiled/
 scribblings/*.html
 scribblings/*.css
 scribblings/*.js
-.environment.yaml.md5
 py/condaenv
+py/environment.yml
 *.sqlite
 
 # The remainder is from

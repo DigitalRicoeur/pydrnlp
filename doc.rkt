@@ -9,7 +9,7 @@
          syntax/parse/define
          markdown/parse
          xml/xexpr
-         "conda.rkt")
+         "support/conda.rkt")
 
 (provide text/c
          (contract-out

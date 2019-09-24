@@ -5,7 +5,7 @@
 (define version "0.0.3")
 (define pkg-authors '(philip))
 
-(define install-collection "conda.rkt")
+(define install-collection "support/conda.rkt")
 
 (define compile-omit-paths '("py/condaenv/"
                              "py/pydrnlp/"))

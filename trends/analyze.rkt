@@ -2,9 +2,9 @@
 
 (require ricoeur/tei
          gregor
-         json
+         ricoeur/stdlib/json
          "types.rkt"
-         "get-build.rkt")
+         "cache-tokenize-corpus.rkt")
 
 
 

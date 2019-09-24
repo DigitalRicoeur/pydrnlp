@@ -1,7 +1,7 @@
 #lang _-exp racket
 
 (require pydrnlp/doc
-         pydrnlp/conda
+         pydrnlp/support/conda
          "render-python/render.rkt"
          adjutor
          scribble/manual

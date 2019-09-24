@@ -8,7 +8,7 @@
          racket/stream
          racket/port
          racket/system
-         "conda.rkt"
+         "support/conda.rkt"
          syntax/parse/define
          (for-syntax racket/base))
 
