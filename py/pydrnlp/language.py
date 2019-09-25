@@ -25,19 +25,8 @@ _model_modules = {"en": en_core_web_md,
                   "fr": fr_core_news_sm,
                   "de": de_core_news_sm}
 
-_model_revisions = sorted([[langStr, mod.__name__, mod.__version__]
-                            for langStr, mod in _model_modules.items()],
-                          key=lambda spec: spec[0])
-
 def revision():
-    # increment lib_revision when making a change to the
-    # logic of this module
-    lib_revision = 0
-    # update spacy_revision on substantive updates to spaCy
-    spacy_revision = "2.1.8"
-    return [lib_revision,
-            spacy_revision,
-            _model_revisions]
+    return 0
 
 class _Promise:
     def __init__(self, mod):

@@ -9,7 +9,7 @@
          racket/port
          racket/system
          adjutor
-         pydrnlp/worker)
+         pydrnlp/support)
 
 (provide trends-engine?
          (contract-out
@@ -18,28 +18,16 @@
                 {#:quiet? any/c}
                 trends-engine?)]
           [trends-engine-revision
-           (-> trends-engine? jsexpr?)]
+           jsexpr?]
           [trends-engine-tokenize
            (-> trends-engine?
-               (listof json-segment?)
-               (stream/c trends-segment-result?))]
-          [struct trends-segment-result
-            ([key jsexpr?]
-             [tokens (listof token?)])]
+               (listof (hash/c (or/c 'en 'fr) (listof string?)
+                               #:immutable #t))
+               (stream/c (listof token?)))]
           [struct token
             ([lemma symbol?]
              [text (and/c string? immutable?)])]
-          [struct json-segment
-            ([lang (or/c 'en 'fr)]
-             [key jsexpr?]
-             [text string?])]
           ))
-
-(struct json-segment (lang key text)
-  #:transparent)
-
-(struct trends-segment-result (key tokens)
-  #:transparent)
 
 (struct token (lemma text)
   #:transparent)
@@ -49,17 +37,10 @@
 
 (define trends-engine-tokenize
   (letrec ([trends-engine-tokenize
-            (λ (it segs)
-              (for/fold/define ([expect-count 0]
-                                [js-arg #hasheq()])
-                               ([i (in-naturals)]
-                                [seg (in-list segs)])
-                (match-define (json-segment lang key text) seg)
-                (values (add1 expect-count)
-                        (hash-set js-arg
-                                  lang
-                                  (cons (list i text)
-                                        (hash-ref js-arg lang null)))))
+            (λ (it js-arg)
+              (define expect-count
+                (for/sum ([lst (in-immutable-hash-values js-arg)])
+                  (length lst)))
               (convert-results
                expect-count
                (trends-engine-send/raw it js-arg #:who 'trends-engine-tokenize)))]
@@ -76,16 +57,20 @@
                               "stream ended without producing all results"
                               expect-count
                               count))]
-                  [else
-                   (match-define (list key (list (list (app string->symbol lema...)
-                                                       (app string->immutable-string text...))
-                                                 ...))
-                     (stream-first js-results))
+                  [(< count expect-count)
                    (define this
-                     (trends-segment-result key (map token lema... text...)))
-                   (define new-count (add1 count))
+                     (map (match-lambda
+                            [(list (app string->symbol lemma)
+                                   (app datum-intern-literal text))
+                             (cons lemma text)])
+                          (stream-first js-results)))
                    (stream-cons this
-                                (loop new-count
-                                      (stream-rest js-results)))])))])
+                                (loop (add1 count)
+                                      (stream-rest js-results)))]
+                  [else
+                   (error 'trends-engine-tokenize
+                              "~a\n  expected: ~e\n  given: more"
+                              "stream produced too many results"
+                              expect-count)])))])
     trends-engine-tokenize))
   

@@ -18,10 +18,9 @@ import srsly.ujson
 import sys
 
 
-def start_loop(revision, on_input):
+def start_loop(on_input):
     def emit(js):
         _dump_json_line(js, sys.stdout)
-    emit(revision())
     for js in _yield_json_lines(sys.stdin):
         for ret in on_input(js):
             emit(ret)

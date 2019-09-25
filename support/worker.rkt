@@ -8,12 +8,15 @@
          racket/stream
          racket/port
          racket/system
-         "support/conda.rkt"
+         "conda.rkt"
+         "revision-contract.rkt"
+         "../py/environment.rkt"
          syntax/parse/define
          (for-syntax racket/base))
 
 (provide python-worker?
          define-python-worker
+         python-revision-value/c
          (contract-out
           [python-worker-running?
            (-> python-worker? boolean?)]
@@ -60,10 +63,6 @@
      (λ ()
        (control 'wait)
        (custodian-shutdown-all cust)))
-    (define revision
-      (read-json in-from-py))
-    (when (eof-object? revision)
-      (error who "the Python process failed to launch properly"))
     (define fatal-error-box
       (box #f))
     (define worker
@@ -90,8 +89,7 @@
     (ctor cust
           worker
           (wrap-evt (thread-dead-evt worker)
-                    (λ (e) (unbox fatal-error-box)))
-          revision)))
+                    (λ (e) (unbox fatal-error-box))))))
 
 (define (python-worker-running? it)
   (thread-running? (python-worker-worker it)))
@@ -165,6 +163,13 @@
        [else
         (values lst (+ (string-length v) prefix-len))]))))
 
+(define (build-worker-revision mod-str rev)
+  (if (andmap values (flatten rev))
+      (list spacy-revision
+            model-revisions
+            mod-str
+            rev)
+      #f))
 
 (define-syntax-parser define-python-worker
   [(_ name:id
@@ -173,10 +178,27 @@
    #:with name-revision (compound-id #:ctxt #'name #'name "-revision")
    #:with launch-name (compound-id #:ctxt #'name "launch-" #'name)
    #:with name-send/raw (compound-id #:ctxt #'name #'name "-send/raw")
+   #:do [(define mod-str (bytes->string/utf-8 (syntax-e #'mod)))
+         (define rev-id
+            (datum->syntax #f (string->symbol
+                               (string-append mod-str ".revision"))
+                           #'mod #'mod))]
+   #:with imported-rev
+   (syntax-local-lift-require
+    #`(rename (lib #,(string-append "pydrnlp/py/"
+                                  (regexp-replace* #rx"\\." mod-str "/")
+                                  ".py"))
+              #,rev-id
+              revision)
+    rev-id)
+   #:declare imported-rev (expr/c #'python-revision-function/c
+                                  #:name rev-id)
    #`(begin
-       (struct name python-worker (revision)
+       (struct name python-worker ()
          #:constructor-name ctor
          #:name static-name)
+       (define name-revision
+         (build-worker-revision '#,mod-str (imported-rev.c)))
        (define launch-name
          (make-launcher #:who 'launch-name mod ctor '(arg ...)))
        (define (name-send/raw it js-arg #:who [who 'name-send/raw])

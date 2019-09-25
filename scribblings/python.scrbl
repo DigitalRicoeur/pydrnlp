@@ -2,8 +2,10 @@
 
 @title{Python Implementation}
 
-@(require "render-python.rkt")
+@(require "include-python.rkt")
 
 @(local-table-of-contents)
 
-@rendered-docs
+@include-python-section{pydrnlp.language}
+@include-python-section{pydrnlp.trends}
+@include-python-section{pydrnlp.jsonio}

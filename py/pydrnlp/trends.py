@@ -48,8 +48,8 @@ def revision():
 
     When the result of tokenizerRevision() changes, any cache is stale.
     """
-    thisModuleRevision = 7
-    return [thisModuleRevision,
+    this_module_revision = 8
+    return [this_module_revision,
             pydrnlp.language.revision()]
 
 
@@ -68,12 +68,9 @@ def analyze_all(jsIn):
     """
     for langStr, segs in jsIn.items():
         nlp = pydrnlp.language.get(langStr)
-        # seg_in is (key, body) so an nlp arg is (body, key)
-        nlp_args = ((seg_in[1], seg_in[0]) for seg_in in segs)
-        for (doc, key) in nlp.pipe(nlp_args, as_tuples = True):
-            tkns = [(t.lemma_, t.text)
-                    for t in doc if tokenShouldUseForLang(t, nlp)]
-            yield (key, tkns)
+        for doc in nlp.pipe(segs, as_tuples = False):
+            yield [(t.lemma_, t.text)
+                   for t in doc if tokenShouldUseForLang(t, nlp)]
 
             
 
@@ -135,5 +132,4 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="engine for Trends tool")
     args = parser.parse_args()
-    pydrnlp.jsonio.start_loop(revision=revision,
-                              on_input=analyze_all)
+    pydrnlp.jsonio.start_loop(analyze_all)

@@ -2,34 +2,98 @@
 
 (provide (except-out (all-from-out racket/base)
                      #%module-begin)
-         (rename-out [modbegin
-                      #%module-begin]))
+         (rename-out [modbegin #%module-begin]))
 
 (require syntax/parse/define
-         (for-syntax racket/base))
+         racket/contract
+         "revision-contract.rkt"
+         (for-syntax racket/base
+                     racket/list
+                     racket/string
+                     racket/sequence
+                     racket/match
+                     syntax/contract
+                     "python-lang/stx.rkt"
+                     "python-lang/prefabs.rkt"))
 
 (define-syntax-parser modbegin
-  [(_ form ...) ;; #%plain-module-begin
-   #'(#%module-begin '(form ...))])
+  [(_ :python-module-forms)
+   #'(#%plain-module-begin
+      (maybe-define-revision form ...)
+      (module* doc pydrnlp/scribblings/python-doc-lang
+        form ...)
+      (module* test #f
+        (require (submod ".." doc))))])
 
-;; PEP 257
+(define-syntax-parser maybe-define-revision
+  ;; so syntax-local-lift require works
+  [(_ :python-module-forms)
+   (or (for/first ([d (in-list (attribute definitions))]
+                   #:when (equal? "revision" (syntax-e (definition-name d))))
+         (parse-revision d
+                         (attribute module-imports-table)
+                         (attribute value-imports-table)))
+       #'(begin))])
 
-;; A docstring is a string literal that occurs as
-;; the first statement in a module, function, class,
-;; or method definition.
+   
+(define-for-syntax (parse-revision fun module-imports-table value-imports-table)
+  (define (reject! srcs suffix)
+    (raise-syntax-error 'pydrnlp/support/python-lang
+                        "bad definition for revision function"
+                        (definition-name fun)
+                        #f
+                        srcs
+                        suffix))
+  (match fun
+    [(fun-definition name-str-stx _ formals async? maybe-return)
+     (unless (null? formals)
+       (reject! (map cdr formals)
+                (format "\n  expected: 0 formal parameters\n  given: ~a"
+                        (length formals))))
+     (when async?
+       (reject! (list async?) ";\n async modifier not allowed"))
+     (unless maybe-return
+       (reject! null ";\n unsupported syntax in function body"))
+     (when (bad-return? maybe-return)
+       (reject! (list (bad-return-stx maybe-return))
+                (bad-return-message-suffix)))
+     (define/syntax-parse return-expr
+       (fixup-static-return
+        maybe-return
+        #:module-imports-table module-imports-table
+        #:value-imports-table value-imports-table
+        #:on-error reject!
+        #:on-import-found
+        (λ (src context)
+          (let* ([ctx (last context)]
+                 [revision-id
+                  (datum->syntax #f (string->symbol
+                                     (string-join
+                                      src "." #:after-last ".revision"))
+                                 ctx ctx)]
+                 [revision-id
+                  (syntax-local-lift-require
+                   #`(rename #,(pydrnlp-raw-root-module-path src)
+                             #,revision-id
+                             revision)
+                   revision-id)])
+            #`(#,(wrap-expr/c
+                  #'python-revision-function/c
+                  revision-id
+                  #:name revision-id))))))
+     (define/syntax-parse name-from-src
+       (datum->syntax name-str-stx 'revision name-str-stx name-str-stx))
+     #'(begin (provide name-from-src)
+              (define name-from-src
+                (let ([v return-expr])
+                  (λ () v))))]
+    [_
+     (reject! null
+              (format "\n  expected: a function definition\n  given: a ~a definition"
+                      (if (var-definition? fun)
+                          "variable"
+                          "class")))]))
 
-;; String literals occurring immediately after
-;; a simple assignment at the top level of a module,
-;; class, or __init__ method are called "attribute docstrings".
-
-;; String literals occurring immediately after
-;; another docstring are called "additional docstrings".
-
-;; see also: PEP 258
-;; Guido: "the reason for PEP 258's rejection is not that
-;;         it is invalid, but that it's not slated for
-;;         stdlib inclusion"
-;; https://bugs.python.org/issue35651
 
 (module indentation racket
   (provide determine-spaces)

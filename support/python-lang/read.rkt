@@ -3,7 +3,24 @@
 (provide python-body-read-syntax
          python-body-read)
 
-;; TODO: un-escape doc-strings
+;; PEP 257
+
+;; A docstring is a string literal that occurs as
+;; the first statement in a module, function, class,
+;; or method definition.
+
+;; String literals occurring immediately after
+;; a simple assignment at the top level of a module,
+;; class, or __init__ method are called "attribute docstrings".
+
+;; String literals occurring immediately after
+;; another docstring are called "additional docstrings".
+
+;; see also: PEP 258
+;; Guido: "the reason for PEP 258's rejection is not that
+;;         it is invalid, but that it's not slated for
+;;         stdlib inclusion"
+;; https://bugs.python.org/issue35651
 
 (require syntax/parse/define)
 
@@ -109,12 +126,12 @@
      (cons '#%brackets (map show* (brackets-body it)))]
     [(braces? it)
      (cons '#%braces (map show* (braces-body it)))]
-    [(line? it)
-     (cons '#%line (map datum-show (line-body it)))]
-    [(suite? it)
-     (cons '#%suite (map datum-show (suite-body it)))]
+    [(or (line? it) (suite? it)) ;; for typechecker
+     (if (line? it)
+         (cons '#%line (map datum-show (line-body it)))
+         (cons '#%suite (map datum-show (suite-body it))))]
     [else
-     (token-struct->datum (cast it Token))]))
+     (token-struct->datum it)]))
 
 
 ;                                               
@@ -256,6 +273,10 @@
 (define (datum->syntax* ctx v)
   (datum->syntax ctx v ctx ctx))
 
+(: ->id (-> (Syntaxof String) Identifier))
+(define (->id stx)
+  (datum->syntax* stx (string->symbol (syntax-e stx))))
+
 (: strip-context (-> Syntax Syntax))
 (define strip-context values)
 #;
@@ -303,7 +324,7 @@
      (cons (clean-docstring docstring)
            (parse-continue enforested))]
     [_
-     (parse-continue enforested)]))
+     (cons #f (parse-continue enforested))]))
 
 (: parse-continue (->* [(Listof Enforested)]
                        [#:for-class? Boolean]
@@ -336,6 +357,10 @@
                 (line (STRING docstring))
                 enforested)
      (cons `(= ,n ,(clean-docstring docstring))
+           (parse-continue enforested))]
+    [(list-rest (line (list-rest (name: n) (op: "=") _))
+                enforested)
+     (cons `(= ,n #f)
            (parse-continue enforested))]
     [(list-rest _ enforested)
      (parse-continue enforested)]))
@@ -462,15 +487,20 @@
              '()]
             [(cons (list (name: n)) params)
              (cons n (loop params))]
+            [(cons (list (op: "*")) params)
+             ;; doesn't correspond to an argument,
+             ;; just means the following are keyword-only
+             (cons '#:* (loop params))]
             [(cons (list (op: "*") (name: n))
                    params)
-             (list* '#:* n (loop params))]
+             (cons `[#:* ,n] (loop params))]
             [(cons (list (op: "**") (name: n))
                    params)
-             (list* '#:** n (loop params))]
-            [(cons (list-rest (name: n) (op: "=") _)
+             (list* `[#:** ,n] (loop params))]
+            [(cons (list-rest (name: n) (op: "=") default)
                    params)
-             (cons (list n) (loop params))]))]
+             ;; TODO: render simple default values
+             (cons (list '#:? n '#:TODO) (loop params))]))]
        [{docstring/false the-suite-body}
         (match the-suite-body
           [(cons (line (list (STRING docstring)))
@@ -487,69 +517,54 @@
        ,@(if maybe-return `(#:return ,maybe-return) null))))
 
 (: parse-maybe-return (-> (Listof Enforested) (U #f Datum)))
-(define (parse-maybe-return the-suite-body)
-  (let/ec return : (U #f Datum)
-    (define (no!) : Nothing (return #f))
-    (let*-values ([{bindings the-suite-body}
-                   (match the-suite-body
-                     [(cons (line (list-rest (NAME n) (op: "=") rhs))
-                            the-suite-body)
-                      (values (list (list n (try-parse-returned-immediate rhs no!)))
-                              the-suite-body)]
-                     [_
-                      (values null the-suite-body)])]
-                  [{raw-returned}
-                   (match the-suite-body
-                     [(cons (line (list (name: "return") raw-returned))
-                            _)
-                      raw-returned]
-                     [_
-                      (no!)])])
-      (define returned
-        (match raw-returned
-          [(brackets elems)
-           (cons 'list (map (try-parse-array-element no!) elems))]
-          [_
-           (try-parse-returned-immediate raw-returned no!)]))
-      `(let ,bindings
-         ,returned))))
+(define (parse-maybe-return body)
+  (let loop ([bindings : (Listof (List Datum Datum)) null]
+             [body : (Listof Enforested) body])
+    (match body
+      [(cons (line (list-rest (NAME lhs) (op: "=") rhs/raw))
+             body)
+       (loop (cons (list (->id lhs) (expression-parts->returnable rhs/raw))
+                   bindings)
+             body)]
+      [(list (line (cons (name: "return") returned/raw)))
+       `(let* ,(reverse bindings)
+          ,(expression-parts->returnable returned/raw))]
+      [_
+       #f])))
 
-(: try-parse-returned-immediate (-> Showable (-> Nothing) Datum))
-(define (try-parse-returned-immediate v no!)
-  (match v
-    [(name: "False")
-     (datum->syntax* (NAME-e v) #f)]
-    [(NUMBER stx)
+(: expression-parts->returnable (-> (Listof (U Token Parens*)) Datum))
+(define (expression-parts->returnable parts)
+  (define (error-result)
+    `(#%error ,(datum-show parts)))
+  (match parts
+    [(list (brackets inside))
+     `(list ,@(map expression-parts->returnable inside))]
+    [(list (NUMBER stx))
      (define n (string->number (syntax-e stx)))
      (if (exact-integer? n)
          (datum->syntax stx n stx stx)
-         (no!))]
-    [_
-     (no!)]))
-
-(: try-parse-array-element (-> (-> Nothing)
-                               (-> (Listof (U Token Parens*))
-                                   Datum)))
-(define ((try-parse-array-element no!) elem)
-  (match elem
-    [(list (NAME n))
-     n]
-    [(list single)
-     (try-parse-returned-immediate single no!)]
+         (error-result))]
+    [(list (and (name: "False") (NAME stx)))
+     (datum->syntax* stx #f)]
+    [(list (NAME constant-ref))
+     (->id constant-ref)]
+    ;; other.module.revision()
     [(cons (NAME this) parts)
-     `((|.| ,this
-            ,@(let loop : (Listof Datum)
-                ([parts : (Listof (U Token Parens*)) parts])
-                (match parts
-                  [(list-rest (op: ".")
-                              (NAME this)
-                              parts)
-                   (cons this (loop parts))]
-                  [(list (parens '()))
-                   null]
-                  [_
-                   (no!)]))))]))
-
+     (let/ec return : Datum
+       `((|.| ,this
+              ,@(let loop : (Listof Datum)
+                  ([parts : (Listof (U Token Parens*)) parts])
+                  (match parts
+                    [(list-rest (op: ".")
+                                (NAME this)
+                                parts)
+                     (cons this (loop parts))]
+                    [(list (parens '()))
+                     null]
+                    [_
+                     (return (error-result))])))))]
+    [_
+     (error-result)]))
 
 
 (: parse-class (-> (List+of (U Token Parens*))
