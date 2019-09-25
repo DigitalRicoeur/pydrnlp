@@ -6,6 +6,9 @@
 
 ;; TODO: may want to make .s breakable w/ \u200B
 
+;; "https://docs.python.org/%d.%d/library"
+;; racket-doc/scribblings/inside/utils.rkt
+
 (module reader syntax/module-reader
   pydrnlp/scribblings/python-doc-lang)
 
@@ -22,7 +25,7 @@
          pydrnlp/support/python-lang/prefabs
          syntax/parse/define
          markdown/parse
-         "render-python/markdown.rkt"
+         "markdown.rkt"
          (for-label racket/base
                     (only-in pydrnlp/support/worker
                              python-revision-value/c))
