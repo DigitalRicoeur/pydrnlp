@@ -1,32 +1,5 @@
 #lang pydrnlp/support/python-lang # -*- coding: utf-8 -*-
 """Core engine for the "Trends" tool.
-
-Types used in this module:
---------------------------
-
-- `JsToken`:
-    `(str, str)` meaning lemma & text
-
-- `JsOutSegment`:
-    `(JsExpr, Listof[JsToken])`
-
-- `JsOut`:
-    `Listof[JsOutSegment]`
-
-
-- `JsInSegment`:
-    `(jsExpr, str)` meaning key & body
-
-- `JsIn`:
-    `{LangStr: Listof[JsInSegment]}`
-
-Would it be useful for JsToken to track the token's
-
-  a) start and end positions and/or
-
-  b) index among significant tokens in the document?
-
-Maybe preserving the ordering within the segment is good enough.
 """
 
 import pydrnlp.language
@@ -54,7 +27,7 @@ def revision():
 
 
 
-def analyze_all(jsIn):
+def analyze_all(jsexpr):
     """Tokenizes JsIn. **TODO: document this.**
 
     Tokens which do not satisfy
@@ -66,16 +39,16 @@ def analyze_all(jsIn):
     normalized, but some words (e.g. "DuFay") shouldn't be.
     (Also, some lemmas are strange, like "whatev".)
     """
-    for langStr, segs in jsIn.items():
-        nlp = pydrnlp.language.get(langStr)
+    for lang_str, segs in jsexpr.items():
+        nlp = pydrnlp.language.get(lang_str)
         for doc in nlp.pipe(segs, as_tuples = False):
             yield [(t.lemma_, t.text)
-                   for t in doc if tokenShouldUseForLang(t, nlp)]
+                   for t in doc if should_use_token(t, lang = nlp)]
 
-            
 
-# tokenShouldUseForLang : Token Language -> bool
-def tokenShouldUseForLang(token, lang):
+
+# should_use_token : Token lang=Language -> bool
+def should_use_token(token, *, lang):
     """Recognizes tokens which should be included in counting
     with respect to the given `spacy.language.Language` instance.
 
@@ -89,20 +62,16 @@ def tokenShouldUseForLang(token, lang):
     Part-of-speech tags that are considered "boring"
     notably include `"NUM"` (numeral) and `"SYM"` (symbol).
     """
-    if (token.is_punct or
-        token.is_space or
-        token.is_stop or # token.lemma_ checked below
-        (token.lemma_ == "-PRON-")): # "-PRON-" sometimes classed as "ADJ"
-        return False
-    elif (token.pos_ not in _interesting_pos_strings):
-        return False
-    elif (token.lemma_ in lang.Defaults.stop_words):
-        # token.is_stop checked above
-        return False
-    elif (not _check_enough_alphabetic_chars(token.lemma_)):
-        return False
-    else:
-        return True
+    return not (token.is_punct
+                or token.is_space
+                or token.is_stop # token.lemma_ checked below
+                # "-PRON-" sometimes classed as "ADJ"
+                or (token.lemma_ == "-PRON-")
+                or (token.pos_ not in _interesting_pos_strings)
+                # token.is_stop checked above
+                or (token.lemma_ in lang.Defaults.stop_words)
+                or (not _check_enough_alphabetic_chars(token.lemma_)))
+
 
 _min_alphabetic_chars = 3 # must be positive
 _char_alphabetic_regex = regex.compile("\\p{Alphabetic=Yes}")
@@ -129,7 +98,5 @@ _interesting_pos_strings = frozenset({
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="engine for Trends tool")
-    args = parser.parse_args()
-    pydrnlp.jsonio.start_loop(analyze_all)
+    pydrnlp.jsonio.start_loop(analyze_all,
+                              description = 'engine for "Trends" tool')

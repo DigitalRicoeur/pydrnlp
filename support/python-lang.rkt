@@ -19,6 +19,9 @@
 (define-syntax-parser modbegin
   [(_ :python-module-forms)
    #'(#%plain-module-begin
+      (module configure-runtime '#%kernel
+        (#%require racket/runtime-config)
+        (configure #f))
       (maybe-define-revision form ...)
       (module* doc pydrnlp/scribblings/python-doc-lang
         form ...)

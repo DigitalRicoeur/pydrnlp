@@ -54,7 +54,10 @@
         #:module-imports-table ($ module-imports-table)
         #:value-imports-table ($ value-imports-table))
        #'(() '()))
-   #`(#%module-begin
+   #`(#%plain-module-begin
+      (module configure-runtime '#%kernel
+        (#%require racket/runtime-config)
+        (configure #f))
       (require (for-label revision-fun-label-requires ...
                           (submod "..")))
       (provide doc)
@@ -81,14 +84,7 @@
          => (λ (lst) (map strip lst))]
         [else
          (datum->syntax stx (syntax->datum stx))]))
-    (strip stx)
-    #|(syntax-parse (strip stx)
-          [(let* ([lhs rhs] ...)
-             body)
-           #`(let* #,(map (λ (a b) #`[#,a #,b]) ($ lhs) ($ rhs))
-               body)]
-          [_
-           this-syntax])|#)
+    (strip stx))
   (define mut-label-requires null)
   (define/syntax-parse return-form
     (match (fun-definition-maybe-return maybe-revision-fun-definition)
@@ -133,8 +129,6 @@
 (define current-value-imports-table
   (make-parameter undefined))
 
-;(require (submod (lib "pydrnlp/py/pydrnlp/language.py") doc))
-;(require (submod (lib "pydrnlp/py/pydrnlp/trends.py") doc))
 (define-for-syntax (public-name? str)
   (and (non-empty-string? str)
        (or (not (eqv? #\_ (string-ref str 0)))
@@ -147,7 +141,8 @@
 
 (define (convert-docstring docstring/false)
   (if docstring/false
-      (with-handlers ([exn:fail? (λ (e) (verbatim docstring/false))])
+      (with-handlers ([exn:fail? (λ (e)
+                                   (verbatim docstring/false))])
         (render-markdown-xexprs
          (parse-markdown docstring/false)))
       null))
@@ -155,14 +150,12 @@
 (define (make-python-section varref docstring revision-fun-expr definitions)
   (define pkg-cache (make-hash))
   (define normalized-module-path
-    (let* ([mod
-            (resolved-module-path-name
-             (variable-reference->resolved-module-path
-              varref))]
-           [mod
-            (if (pair? mod)
-                (car mod)
-                mod)])
+    (let* ([mod (resolved-module-path-name
+                 (variable-reference->resolved-module-path
+                  varref))]
+           [mod (if (pair? mod)
+                    (car mod)
+                    mod)])
       (if (path? mod)
           (path->module-path mod #:cache pkg-cache)
           `',mod)))
@@ -185,19 +178,19 @@
       [_
        #f]))
   (define mod-path-tag
-    (intern-taglet `(mod-path ,normalized-module-path)))
+    (intern-taglet `(mod-path ,(format "~s" normalized-module-path))))
   (define mod-link
     (link-element module-link-color
-                  python-module-name
+                  (racketmodfont python-module-name)
                   mod-path-tag))
   (decode
    (list
     (title (racketmodfont python-module-name))
     (declare-exporting ,normalized-module-path)
     (make-defmodule-box mod-link
-                          mod-path-tag
-                          python-module-name
-                          maybe-pkg)
+                        mod-path-tag
+                        python-module-name
+                        maybe-pkg)
     (part-tag-decl mod-path-tag)
     (convert-docstring docstring)
     revision-fun-expr
@@ -212,8 +205,6 @@
   (make-parameter undefined))
 
 
-
-
 (define (render-child it)
   (cond
     [(fun-definition? it)
@@ -222,37 +213,39 @@
      (render-class-definition it)]
     [else
      (render-var-definition it)]))
-
-(define (render-var-definition this)
-  (match-define (var-definition name docstring) this)
-  (list (make-blue-box #:label (if (current-class-name)
-                                   "Python property"
-                                   "Python value")
-                       (defpythonid (literal name)))
-        (convert-docstring docstring)))
   
 (define (render-class-definition this)
-  ;; TODO: consider content-width block-width
+  ;; TODO: consider content-width block-width current-display-width
   (match-define (class-definition name docstring supers body) this)
   (list (make-blue-box #:label "Python class"
                        (list (racketidfont "class")
                              spacer
                              (defpythonid name)
                              open
-                             #;(add-between (map (λ (parts)
+                             (add-between (map (λ (parts)
                                                  (racketidfont
                                                   (string-join parts ".")))
                                                supers)
                                           comma-space)
                              close))
         (convert-docstring docstring)
-        ;; TODO: inset
         (parameterize ([current-class-name name])
-          (map render-child body))))
+          (nested #:style 'inset
+                  (map render-child body)))))
+
+
+(define (render-var-definition this)
+  (match-define (var-definition name docstring) this)
+  (list (make-blue-box #:label (if (current-class-name)
+                                   "Python class attribute"
+                                   "Python value")
+                       (defpythonid (literal name)))
+        (convert-docstring docstring)))
+
 
 (define (render-fun-definition this)
   (match-define (fun-definition name docstring formals async? _) this)
-  ;; TODO: consider content-width block-width
+  ;; TODO: consider content-width block-width current-display-width
   (list (make-blue-box #:label (if (current-class-name)
                                    "Python function"
                                    "Python method")
@@ -269,28 +262,25 @@
 ;;       https://github.com/python/cpython/blob/25221b3/Lib/inspect.py#L3033
 ;;   - for individual formal:
 ;;       https://github.com/python/cpython/blob/25221b3/Lib/inspect.py#L2549
-;;  We ignore by-position only arguments because they can only
+;;  We ignore by-position-only arguments because they can only
 ;;  come from C extensions: there is no syntax to create them in Python.
 (define/contract (render-fun-formals formals)
   (-> list? (listof content?))
-  (for/list ([this (in-list formals)]
-             [i (in-naturals)])
-    (define ?comma-space
-      (if (= 0 i)
-          null
-          comma-space))
-    (match this
-      [(list '*)
-       (list ?comma-space star)]
-      [(list 'required arg)
-       (list ?comma-space (racketvarfont arg))]
-      [(list 'optional arg _)
-       ;; TODO: render simple defaults
-       (optional-brackets (list ?comma-space (racketvarfont arg)))]
-      [(list '* arg)
-       (list ?comma-space star (racketvarfont arg))]
-      [(list '** arg)
-       (list ?comma-space star-star (racketvarfont arg))])))
+  (add-between
+   (map (match-lambda
+          [(list '*)
+           star]
+          [(list 'required arg)
+           (racketvarfont arg)]
+          [(list-rest 'optional arg _)
+           ;; TODO: render simple defaults
+           (optional-brackets (racketvarfont arg))]
+          [(list '* arg)
+           (list star (racketvarfont arg))]
+          [(list '** arg)
+           (list star-star (racketvarfont arg))])
+        formals)
+   comma-space))
 
 
 (define (defpythonid str)
@@ -356,9 +346,9 @@
 
 
 (define/contract (make-defmodule-box mod-link
-                                       mod-path-tag
-                                       python-module-name
-                                       maybe-pkg)
+                                     mod-path-tag
+                                     python-module-name
+                                     maybe-pkg)
   (unconstrained-domain-> pre-part?)
   ;; copied from scribble/private/manual-mod
   (define lib-para

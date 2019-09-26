@@ -41,14 +41,14 @@ class _Promise:
             self.__rslt = ret
             return ret
 
-_all_promised_languages = {langStr: _Promise(mod)
-                           for langStr, mod in _model_modules.items()}
+_all_promised_languages = {lang_str: _Promise(mod)
+                           for lang_str, mod in _model_modules.items()}
 
 # get : str -> spacy.language.Language
-def get(langStr):
+def get(lang_str):
     """Returns a `spacy.language.Language` instance for the given IANA string.
 
     Models from SpaCy are loaded lazily.
     """
-    return _all_promised_languages[langStr].force()
+    return _all_promised_languages[lang_str].force()
     # else some useful error

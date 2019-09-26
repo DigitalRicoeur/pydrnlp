@@ -11,21 +11,26 @@ This module also writes JSON with a terminating newline,
 though Racket's JSON parser doesn't need this.
 """
 
-from abc import ABC, abstractmethod
-import multiprocessing
 import srsly
 import srsly.ujson
 import sys
+import argparse
+import multiprocessing
 
 
-def start_loop(on_input):
+def start_loop(on_input, *, description = None):
+    if description is not None:
+        argparse.ArgumentParser(description = description).parse_args()
     def emit(js):
         _dump_json_line(js, sys.stdout)
     for js in _yield_json_lines(sys.stdin):
         for ret in on_input(js):
-            emit(ret)
+            if ret is not None:
+                emit(ret)
+            else:
+                raise TypeError("given generator yielded None: "
+                                + repr(on_input))
         emit(None)
-
 
 # FIXME
 # line 92, in _yield_json_lines

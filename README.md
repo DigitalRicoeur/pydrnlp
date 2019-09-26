@@ -1,18 +1,18 @@
 # pydrnlp #
-## NLP library for Digital Ricoeur ##
+## NLP Library for Digital Ricoeur ##
 
 Copyright © 2018–present Digital Ricoeur contributors
 
 This repository contains:
 
-1. A Python 3 library providing some NLP functionality needed
-   by Digital Ricoeur.
+1. A Python 3 package providing some NLP functionality needed
+   by Digital Ricoeur; and
 
-2. A Racket package that serves as a wrapper for the Python library.
+2. A Racket package that manages the Python-implemented
+   functionality and integrates it with other Digital Ricoeur tools.
 
-The implementation is still experimental.
 The initial goal is to support the NLP functionality needed
-to implement our own versions of the widgets that
+to implement our own versions of some of the widgets that
 Digital Ricoeur currently gets from Voyant.
 
 The Python portion of this repository is in the `py/` directory,

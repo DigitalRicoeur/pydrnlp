@@ -34,10 +34,8 @@
   (newline out)
   (flush-output out))
 
-;; TODO: think about exn:break
-;; Think about thread-resume / kill-safety
-
-(define ((make-launcher #:who who mod ctor [py-args null]) #:quiet? [quiet? #t])
+(define (do-launch-worker mod ctor py-args
+                          #:who who #:quiet? quiet?)
   (define cust
     (make-custodian))
   (with-handlers ([exn:fail? (λ (e)
@@ -67,21 +65,23 @@
       (box #f))
     (define worker
       (parameterize ([current-custodian cust])
-        (thread
+        (thread/suspend-to-kill
          (λ ()
-           (with-handlers ([exn:fail? (λ (e)
-                                        (set-box! fatal-error-box e)
-                                        (raise e))])
-             (let loop ()
-               (match-define (cons js reply-ach)
-                 (thread-receive))
-               (write-json-line js out-to-py) ;; includes flush-output
-               (for ([rslt (in-producer (λ () (read-json in-from-py)))]
-                     #:final (eq? 'null rslt))
-                 (when (eof-object? rslt)
-                   (error who "unexpected eof"))
-                 (async-channel-put reply-ach rslt))
-               (loop)))))))
+           (parameterize-break #f
+             (with-handlers ([exn:fail? (λ (e)
+                                          (set-box! fatal-error-box e)
+                                          (raise e))])
+               (let loop ()
+                 (match-define (cons js reply-ach)
+                   (thread-receive))
+                 (write-json-line js out-to-py) ;; includes flush-output
+                 (for ([rslt (in-producer (λ () (read-json in-from-py)))]
+                       #:final (eq? 'null rslt))
+                   (when (eof-object? rslt)
+                     ;; FIXME use raise-read-eof-error
+                     (error who "unexpected eof"))
+                   (async-channel-put reply-ach rslt))
+                 (loop))))))))
     (thread
      (λ ()
        (sync (thread-dead-evt worker))
@@ -104,6 +104,7 @@
   (define reply-ach
     (make-async-channel))
   (match-define (python-worker _ worker dead-evt) it)
+  (thread-resume worker (current-thread))
   (thread-send worker
                (cons js-arg reply-ach)
                (λ ()
@@ -116,23 +117,25 @@
 
 
 (define (handle-worker-result #:who who reply-ach worker-dead-evt)
+  (define handle-dead-evt
+    (handle-evt
+     worker-dead-evt
+     (λ (maybe-fatal-error)
+       (or (sync/timeout 0 reply-ach)
+           (error who
+                  "~a\n  ~a: ~e"
+                  "the python worker died before returning a result"
+                  "final exception"
+                  (or maybe-fatal-error
+                      (unquoted-printing-string "not recorded")))))))
   (define (get-result)
-    (sync
-     reply-ach
-     (handle-evt
-      worker-dead-evt
-      (λ (maybe-fatal-error)
-        (or (sync/timeout 0 reply-ach)
-            (error who
-                   "~a\n  final exception: ~e"
-                   "the python worker died before returning a result"
-                   (or maybe-fatal-error
-                       (unquoted-printing-string "not recorded"))))))))
+    (sync reply-ach handle-dead-evt))
   (for/stream ([js (in-producer get-result 'null)])
     js))
 
 
 (define-for-syntax (compound-id #:ctxt ctxt . parts)
+  ;; TODO: format-id subsumes this in Racket 7.5
   (define new-id
     (datum->syntax
      ctxt
@@ -164,12 +167,15 @@
         (values lst (+ (string-length v) prefix-len))]))))
 
 (define (build-worker-revision mod-str rev)
-  (if (andmap values (flatten rev))
+  (if (let loop ([rev rev])
+        (if (list? rev)
+            (andmap loop rev)
+            rev))
       (list spacy-revision
             model-revisions
             mod-str
             rev)
-      #f))
+      #false))
 
 (define-syntax-parser define-python-worker
   [(_ name:id
@@ -180,32 +186,42 @@
    #:with name-send/raw (compound-id #:ctxt #'name #'name "-send/raw")
    #:do [(define mod-str (bytes->string/utf-8 (syntax-e #'mod)))
          (define rev-id
-            (datum->syntax #f (string->symbol
-                               (string-append mod-str ".revision"))
-                           #'mod #'mod))]
+           (datum->syntax #f (string->symbol
+                              (string-append mod-str ".revision"))
+                          #'mod #'mod))]
    #:with imported-rev
    (syntax-local-lift-require
     #`(rename (lib #,(string-append "pydrnlp/py/"
-                                  (regexp-replace* #rx"\\." mod-str "/")
-                                  ".py"))
+                                    (regexp-replace* #rx"\\." mod-str "/")
+                                    ".py"))
               #,rev-id
               revision)
     rev-id)
    #:declare imported-rev (expr/c #'python-revision-function/c
                                   #:name rev-id)
+   #:do [;; to avoid exposing struct:name
+         (define introduce (make-syntax-introducer))]
+   #:with hygienic-name (introduce #'name)
+   #:with hygienic-name? (introduce #'name?)
    #`(begin
-       (struct name python-worker ()
+       (struct hygienic-name python-worker ()
          #:constructor-name ctor
-         #:name static-name)
+         #:reflection-name 'name
+         #:omit-define-syntaxes)
+       (define-syntax name?
+         (make-rename-transformer (quote-syntax hygienic-name?)))
        (define name-revision
          (build-worker-revision '#,mod-str (imported-rev.c)))
-       (define launch-name
-         (make-launcher #:who 'launch-name mod ctor '(arg ...)))
-       (define (name-send/raw it js-arg #:who [who 'name-send/raw])
-         (unless (name? it)
-           ;; doesn't consult #:who
-           (raise-argument-error 'name-send/raw (symbol->string 'name?) it))
-         (python-worker-send #:who who it js-arg)))])
+       (define (launch-name #:quiet? [quiet? #t])
+         (do-launch-worker #:who 'launch-name
+                           #:quiet? quiet?
+                           'mod ctor '(arg ...)))
+       (with-contract
+        #:region define-python-worker name
+        ([name-send/raw
+          (->* [name? jsexpr?] [#:who symbol?] (stream/c jsexpr?))])
+        (define (name-send/raw it js-arg #:who [who 'name-send/raw])
+          (python-worker-send #:who who it js-arg))))])
          
 
 

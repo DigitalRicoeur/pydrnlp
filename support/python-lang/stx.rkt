@@ -112,7 +112,7 @@
            #:attr parsed (list 'required #'name))
   (pattern #:*
            #:attr parsed (list '*))
-  (pattern [#:? name:str #:todo]
+  (pattern [#:? name:str #:TODO]
            #:attr parsed (list 'optional #'name))
   (pattern [#:* name:str]
            #:attr parsed (list '* #'name))

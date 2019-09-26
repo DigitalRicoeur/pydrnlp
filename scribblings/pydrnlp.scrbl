@@ -7,58 +7,65 @@
                       "philip@philipmcgrath.com")]
 @defmodule[pydrnlp]
 
-@(require (for-label (except-in racket
+@(require scribble/core
+          (for-label (except-in racket
                                 date
                                 date?)
-                     pydrnlp
-                     json
-                     ))
+                     pydrnlp))
 
 The @racketmodname[pydrnlp] repository contains:
 @itemlist[
  #:style 'ordered
- @item{A Python 3 library providing some NLP functionality 
-  needed by Digital Ricœur.
+ @item{A Python 3 package providing some NLP functionality 
+  needed by Digital Ricœur, which is implemented using
+  @hyperlink["https://spacy.io/"]{spaCy}; and
  }
- @item{A Racket package that serves as a wrapper
-  for the Python library.
+ @item{A Racket package that manages the Python-implemented
+  functionality and integrates it with other Digital Ricoeur tools.
   }]
+
+The initial goal is to support the NLP functionality needed
+to implement our own versions of the widgets that
+Digital Ricœur currently gets from Voyant.
 
 @margin-note{
  The functionality described in this document
  is still at an experimental stage.
 }
 
-The initial goal is to support the NLP functionality needed
-to implement our own versions of the widgets that
-Digital Ricœur currently gets from Voyant.
-By design, @racketmodname[pydrnlp] aims to provide
-a minimal layer over the needed functionality from Python.
-Any features that don't strictly have to be here
-should usually be implemented instead by higher-level clients
-of this library.
-Accordingly, @racketmodname[pydrnlp] has no dependencies on
-other Digital Ricœur Racket packages.
-(Of course, determining which features ``strictly have to be here''
-involves interpretation.
-One guiding principle is that @racketmodname[pydrnlp] should
-abstract over the specifics of the communication format
-expected by the Python layer.)
-
 To use the Python functionality, you must have a @exec{conda}
-executable in your PATH for the Conda package manager.
+executable in your @envvar{PATH} for the Conda package manager.
 The recommended way to obtain this is by installing the
 @hyperlink["https://conda.io/miniconda.html"]{Miniconda}
 distribution, though the larger Anaconda distribution
 should work as well.
-As long as you have @exec{conda} installed, Racket will automatically
-take care of the details of creating or updating the
-virtual environment and managing Python dependencies.
+As long as you have @exec{conda} installed,
+@seclink["setup" #:doc '(lib "scribblings/raco/raco.scrbl")
+         @exec{raco setup}]
+will manage the Python dependencies
+and virtual environment automatically.
+Note that you @italic{do not} need to have Conda
+or even Python installed merely to build @racketmodname[pydrnlp]
+(including the Python documentation)
+or to use the Racket-implemented functionality.
 
+@(define (nested/inset #:depth n . body)
+   (let loop ([n n]
+              [body body])
+     (if (= 0 n)
+         body
+         (loop (sub1 n) (nested #:style 'inset body)))))
+@nested/inset[#:depth 4]{
+ @elem[#:style (style #f (list (background-color-property "yellow")))]{
+  @bold{NOTE:}}
+ Much of this document is badly out-of-date.
+ We are in the process of updating it in conjunction
+ with the initial release.
+}
 
 @(local-table-of-contents)
 
-@include-section["racket.scrbl"]
-@include-section["python.scrbl"]
+@include-section["trends.scrbl"]
+@include-section["support.scrbl"]
 
 

@@ -1,6 +1,9 @@
 #lang racket
 
 (require scribble/manual
+         scribble/decode
+         scribble/core
+         scribble/racket
          syntax/parse/define
          (for-syntax (only-in syntax/parse [attribute $])))
 
@@ -26,7 +29,22 @@
                     (regexp-replace* #rx"\\." str "/")
                     ".py")]))
 
+(define-syntax-parser pythonmodlink
+  [(_ :string-ish)
+   #`(racketmodlink (lib #,(dotted->lib-pth ($ datum)))
+                    (->pythonmodlink-elem parsed))])
+(define (->pythonmodlink-elem str)
+  (element module-link-color
+           (racketmodfont str)))
+
+
 (define-syntax-parser include-python-section
+  [(_ lib:string-ish #:title pre-new-title ...)
+   #:declare pre-new-title (expr/c #'pre-content?
+                                   #:name "title expression")
+   #:with doc (syntax/loc this-syntax
+                (include-python-section lib))
+   #'(re-title doc pre-new-title.c ...)]
   [(_ :string-ish)
    (syntax-local-lift-require
     #`(only (submod (lib #,(dotted->lib-pth ($ datum)))
@@ -34,7 +52,6 @@
             doc)
     #'doc)])
 
-(define-syntax-parser pythonmodlink
-  [(_ :string-ish)
-   #`(racketmodlink (lib #,(dotted->lib-pth ($ datum))) parsed)])
-
+(define (re-title doc . pre-content)
+  (struct-copy part doc
+               [title-content (decode-content pre-content)]))
