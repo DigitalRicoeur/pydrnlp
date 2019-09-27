@@ -6,21 +6,8 @@ import pydrnlp.language
 import pydrnlp.jsonio
 import regex
 
-# revision : -> RevisionJsexpr
+# Python revision function
 def revision():
-    """Returns a non-False JSON value identifying the current revision.
-
-    The intended purpose is for clients to
-    be able to cache responses:
-    As long as tokenizerRevision() returns the same value,
-    calling this API on the same input should return equivalent output.
-    This enables clients to cache responses.
-    The returned value incorporates the results of
-    pydrnlp.drtoken.tokenFilterRevision() and
-    pydrnlp.drlanguage.drLanguageRevision().
-
-    When the result of tokenizerRevision() changes, any cache is stale.
-    """
     this_module_revision = 8
     return [this_module_revision,
             pydrnlp.language.revision()]
@@ -28,10 +15,9 @@ def revision():
 
 
 def analyze_all(jsexpr):
-    """Tokenizes JsIn. **TODO: document this.**
+    """Tokenizes jsexpr. **TODO: document this.**
 
-    Tokens which do not satisfy
-    `pydrnlp.tokenizer.usetoken.tokenShouldUseForLang`
+    Tokens which do not satisfy `should_use_token`
     with this language are discarded.
 
     The purpose of the "text" field is to provide an example
@@ -47,7 +33,7 @@ def analyze_all(jsexpr):
 
 
 
-# should_use_token : Token lang=Language -> bool
+# should_use_token(Token, lang = Language) -> bool
 def should_use_token(token, *, lang):
     """Recognizes tokens which should be included in counting
     with respect to the given `spacy.language.Language` instance.

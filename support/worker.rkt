@@ -1,7 +1,6 @@
 #lang racket/base
 
 (require ricoeur/stdlib/json
-         racket/list
          racket/contract
          racket/match
          racket/async-channel
@@ -13,6 +12,9 @@
          "../py/environment.rkt"
          syntax/parse/define
          (for-syntax racket/base))
+
+(module+ test
+  (require rackunit))
 
 (provide python-worker?
          define-python-worker
@@ -26,21 +28,51 @@
            (-> python-worker? (evt/c (or/c #f exn:fail?)))]
           ))
  
-(struct python-worker (cust worker dead-evt)
+(struct python-worker (cust worker-cust-bx dead-evt)
   #:transparent)
 
-(define (write-json-line js out)
-  (write-json js out)
-  (newline out)
-  (flush-output out))
+(define (python-worker-running? it)
+  (let ([?thd (custodian-box-value
+               (python-worker-worker-cust-bx it))])
+    (and ?thd
+         (thread-running? ?thd))))
+
+(define (python-worker-kill it)
+  (custodian-shutdown-all (python-worker-cust it)))
+
+(define (build-worker-revision mod-str rev)
+  (if (let loop ([rev rev])
+        (if (list? rev)
+            (andmap loop rev)
+            rev))
+      (list spacy-revision
+            model-revisions
+            mod-str
+            rev)
+      #false))
+
+;
+;                                       
+;   ;;                            ;;    
+;   ;;                            ;;    
+;   ;;  ;;    ;; ;;  ; ;;;   ;;;  ;;;;; 
+;   ;; ;  ;   ;; ;;  ;;  ;  ;   ; ;;  ; 
+;   ;;    ;;  ;; ;;  ;;  ;; ;     ;;  ;;
+;   ;;  ;;;;  ;; ;;  ;;  ;;;;     ;;  ;;
+;   ;; ;  ;;  ;; ;;  ;;  ;; ;     ;;  ;;
+;   ;;;;  ;;   ; ;;  ;;  ;; ;   ; ;;  ;;
+;    ; ;;; ;   ;;;;  ;;  ;;  ;;;  ;;  ;;
+;                                       
+;
 
 (define (do-launch-worker mod ctor py-args
                           #:who who #:quiet? quiet?)
   (define cust
     (make-custodian))
-  (with-handlers ([exn:fail? (λ (e)
-                               (custodian-shutdown-all cust)
-                               (raise e))])
+  (with-handlers ([exn? (λ (e)
+                          ;; includes exn:break?
+                          (custodian-shutdown-all cust)
+                          (raise e))])
     (match-define (list in-from-py out-to-py pid _ control)
       (parameterize ([current-custodian cust]
                      [current-subprocess-custodian-mode 'kill]
@@ -59,58 +91,92 @@
                py-args)))
     (thread
      (λ ()
+       ;; TODO: track exit code ?
        (control 'wait)
        (custodian-shutdown-all cust)))
     (define fatal-error-box
       (box #f))
     (define worker
       (parameterize ([current-custodian cust])
-        (thread/suspend-to-kill
+        ;; NOT suspend-to-kill:
+        ;; the creating custodian controls the subprocess
+        (thread
          (λ ()
            (parameterize-break #f
              (with-handlers ([exn:fail? (λ (e)
-                                          (set-box! fatal-error-box e)
+                                          (box-cas! fatal-error-box #f e)
                                           (raise e))])
+               (define (write-json-line js)
+                 (write-json js out-to-py)
+                 (newline out-to-py)
+                 (flush-output out-to-py))
                (let loop ()
                  (match-define (cons js reply-ach)
                    (thread-receive))
-                 (write-json-line js out-to-py) ;; includes flush-output
+                 (write-json-line js)
                  (for ([rslt (in-producer (λ () (read-json in-from-py)))]
                        #:final (eq? 'null rslt))
                    (when (eof-object? rslt)
                      ;; FIXME use raise-read-eof-error
+                     ;; Should this use a who from -send/raw?
                      (error who "unexpected eof"))
                    (async-channel-put reply-ach rslt))
                  (loop))))))))
+    ;; while the evts are reachable, cust is always reachable
+    ;; anyway, so we may as well take every oppotunity for
+    ;; custodian-shutdown-all
+    (define the-thread-dead-evt
+      (wrap-evt (thread-dead-evt worker)
+                (λ (e) (custodian-shutdown-all cust))))
+    (define worker-cust-bx
+      (make-custodian-box cust worker))
     (thread
      (λ ()
-       (sync (thread-dead-evt worker))
-       (custodian-shutdown-all cust)))
-    (ctor cust
-          worker
-          (wrap-evt (thread-dead-evt worker)
-                    (λ (e) (unbox fatal-error-box))))))
+       (sync the-thread-dead-evt)))
+    (define worker-dead-evt
+      (wrap-evt (choice-evt worker-cust-bx
+                            the-thread-dead-evt)
+                (λ (e) (unbox fatal-error-box))))
+    (sync/timeout
+     (λ ()
+       ;; ok
+       (ctor cust
+             worker-cust-bx
+             worker-dead-evt))
+     (handle-evt
+      worker-dead-evt
+      (λ (e)
+        ;; already dead
+        (if (exn? e)
+            (raise e) ;; TODO better error message
+            (error who "Python process failed to start successfully")))))))
 
-(define (python-worker-running? it)
-  (thread-running? (python-worker-worker it)))
-
-(define (python-worker-kill it)
-  (custodian-shutdown-all (python-worker-cust it)))
-
-
-
+;
+;                           
+;                         ;;
+;                         ;;
+;    ;; ; ;;   ; ;;;   ;;;;;
+;  ;;  ; ;  ;  ;;  ;  ;   ;;
+;   ;    ;  ;  ;;  ;; ;   ;;
+;    ;; ;;;;;; ;;  ;;;;   ;;
+;      ;;;     ;;  ;; ;   ;;
+;  ;   ; ;     ;;  ;; ;   ;;
+;   ;;;   ;;;  ;;  ;;  ;;; ;
+;                           
+;
 
 (define (python-worker-send #:who who it js-arg)
+  (define (no!)
+    (raise-argument-error who
+                          "python-worker-running?"
+                          it))
   (define reply-ach
     (make-async-channel))
-  (match-define (python-worker _ worker dead-evt) it)
-  (thread-resume worker (current-thread))
-  (thread-send worker
-               (cons js-arg reply-ach)
-               (λ ()
-                 (raise-argument-error who
-                                       "python-worker-running?"
-                                       it)))
+  (match-define (python-worker _ (app custodian-box-value ?worker) dead-evt)
+    it)
+  (if ?worker
+      (thread-send ?worker (cons js-arg reply-ach) no!)
+      (no!))
   (handle-worker-result #:who who
                         reply-ach
                         dead-evt))
@@ -130,9 +196,36 @@
                       (unquoted-printing-string "not recorded")))))))
   (define (get-result)
     (sync reply-ach handle-dead-evt))
-  (for/stream ([js (in-producer get-result 'null)])
-    js))
+  ;; FIXME workaround until Racket 7.5 for
+  ;; https://github.com/racket/racket/commit/a5448f1
+  (stream-rest
+   (stream-cons
+    '|FIXME in Racket 7.5|
+    (for/stream ([js (in-producer get-result 'null)])
+      js))))
 
+(module+ test
+  (check-not-false
+   (sync/timeout 2
+                 (thread
+                  (λ ()
+                    (handle-worker-result
+                     #:who 'test never-evt never-evt))))
+   "handle-worker-result should be lazy"))
+
+;                                   
+;                                   
+;       ;;        ;;;;;             
+;       ;;       ;;                 
+;    ;;;;;  ;;  ;;;; ;; ; ;;;   ;;  
+;   ;   ;; ;  ;  ;;  ;; ;;  ;  ;  ; 
+;   ;   ;; ;  ;  ;;  ;; ;;  ;; ;  ; 
+;  ;;   ;;;;;;;; ;;  ;; ;;  ;;;;;;;;
+;   ;   ;; ;     ;;  ;; ;;  ;; ;    
+;   ;   ;; ;     ;;  ;; ;;  ;; ;    
+;    ;;; ;  ;;;  ;;  ;; ;;  ;;  ;;; 
+;                                   
+;
 
 (define-for-syntax (compound-id #:ctxt ctxt . parts)
   ;; TODO: format-id subsumes this in Racket 7.5
@@ -166,16 +259,8 @@
        [else
         (values lst (+ (string-length v) prefix-len))]))))
 
-(define (build-worker-revision mod-str rev)
-  (if (let loop ([rev rev])
-        (if (list? rev)
-            (andmap loop rev)
-            rev))
-      (list spacy-revision
-            model-revisions
-            mod-str
-            rev)
-      #false))
+
+
 
 (define-syntax-parser define-python-worker
   [(_ name:id

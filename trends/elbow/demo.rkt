@@ -4,7 +4,7 @@
          racket/runtime-path
          racket/fasl
          racket/flonum
-         plot
+         #;plot ;; comment out on commit to avoid pkg dependency
          "sample-tree.rkt"
          "kde.rkt"
          "otsu.rkt"
@@ -29,6 +29,8 @@
 (define-runtime-path out-dir
   "out/")
 
+;; comment out on commit to avoid pkg dependency
+#;
 (define (plot-variant dir)
   (match-define (data name kde otsu elements weights)
     (variant-directory->data dir))

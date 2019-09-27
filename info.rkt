@@ -40,5 +40,6 @@
     "markdown"
     "rackunit-typed"
     "_-exp"
+    "at-exp-lib"
     "rackjure"))
 

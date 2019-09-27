@@ -27,6 +27,8 @@ For more information, see the documentation built from
 
 The canonical version of this repository is at
 <https://bitbucket.org/digitalricoeur/pydrnlp>.
+There is also a publish-only mirror at
+<https://github.com/DigitalRicoeur/pydrnlp>.
 
 
 ## License ##

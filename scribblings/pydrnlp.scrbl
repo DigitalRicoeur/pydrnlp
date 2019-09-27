@@ -8,6 +8,8 @@
 @defmodule[pydrnlp]
 
 @(require scribble/core
+          "bibliography.rkt"
+          "lib.rkt"
           (for-label (except-in racket
                                 date
                                 date?)
@@ -18,14 +20,14 @@ The @racketmodname[pydrnlp] repository contains:
  #:style 'ordered
  @item{A Python 3 package providing some NLP functionality 
   needed by Digital Ricœur, which is implemented using
-  @hyperlink["https://spacy.io/"]{spaCy}; and
+  @spaCy; and
  }
  @item{A Racket package that manages the Python-implemented
   functionality and integrates it with other Digital Ricoeur tools.
   }]
 
 The initial goal is to support the NLP functionality needed
-to implement our own versions of the widgets that
+to implement our own versions of some of the widgets that
 Digital Ricœur currently gets from Voyant.
 
 @margin-note{
@@ -50,11 +52,9 @@ or even Python installed merely to build @racketmodname[pydrnlp]
 or to use the Racket-implemented functionality.
 
 @(define (nested/inset #:depth n . body)
-   (let loop ([n n]
-              [body body])
-     (if (= 0 n)
-         body
-         (loop (sub1 n) (nested #:style 'inset body)))))
+   (for/fold ([body body])
+             ([i (in-range n)])
+     (nested #:style 'inset body)))
 @nested/inset[#:depth 4]{
  @elem[#:style (style #f (list (background-color-property "yellow")))]{
   @bold{NOTE:}}
@@ -67,5 +67,5 @@ or to use the Racket-implemented functionality.
 
 @include-section["trends.scrbl"]
 @include-section["support.scrbl"]
-
+@|bibliography-section|
 

@@ -35,42 +35,43 @@
 (define-python-worker trends-engine
   #"pydrnlp.trends")
 
-(define trends-engine-tokenize
-  (letrec ([trends-engine-tokenize
-            (λ (it js-arg)
-              (define expect-count
-                (for/sum ([lst (in-immutable-hash-values js-arg)])
-                  (length lst)))
-              (convert-results
-               expect-count
-               (trends-engine-send/raw it js-arg #:who 'trends-engine-tokenize)))]
-           [convert-results
-            (λ (expect-count js-results)
-              (let loop ([count 0]
-                         [js-results js-results])
-                (cond
-                  [(stream-empty? js-results)
-                   (if (= count expect-count)
-                       empty-stream
-                       (error 'trends-engine-tokenize
-                              "~a\n  expected: ~e\n  given: ~e"
-                              "stream ended without producing all results"
-                              expect-count
-                              count))]
-                  [(< count expect-count)
-                   (define this
-                     (map (match-lambda
-                            [(list (app string->symbol lemma)
-                                   (app datum-intern-literal text))
-                             (cons lemma text)])
-                          (stream-first js-results)))
-                   (stream-cons this
-                                (loop (add1 count)
-                                      (stream-rest js-results)))]
-                  [else
-                   (error 'trends-engine-tokenize
-                              "~a\n  expected: ~e\n  given: more"
-                              "stream produced too many results"
-                              expect-count)])))])
-    trends-engine-tokenize))
+
+(define (trends-engine-tokenize it js-arg)
+  (define expect-count
+    (for/sum ([lst (in-immutable-hash-values js-arg)])
+      (length lst)))
+  (convert-results
+   expect-count
+   (trends-engine-send/raw it js-arg #:who 'trends-engine-tokenize)))
+
+
+(define (convert-results expect-count js-results)
+  ;; TODO: could this use for/foldr ??
+  ;; ?? "promised" / "produced" ??
+  (let loop ([count 0]
+             [js-results js-results])
+    (cond
+      [(stream-empty? js-results)
+       (if (= count expect-count)
+           empty-stream
+           (error 'trends-engine-tokenize
+                  "~a\n  expected: ~e\n  given: ~e"
+                  "stream ended without producing all results"
+                  expect-count
+                  count))]
+      [(< count expect-count)
+       (define this
+         (map (match-lambda
+                [(list (app string->symbol lemma)
+                       (app datum-intern-literal text))
+                 (cons lemma text)])
+              (stream-first js-results)))
+       (stream-cons this
+                    (loop (add1 count)
+                          (stream-rest js-results)))]
+      [else
+       (error 'trends-engine-tokenize
+              "~a\n  expected: ~e\n  given: more"
+              "stream produced too many results"
+              expect-count)])))
   
