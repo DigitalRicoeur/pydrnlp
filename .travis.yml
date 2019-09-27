@@ -2,8 +2,7 @@ language: c
 
 # Based from: https://github.com/greghendershott/travis-racket
 
-# Optional: Remove to use Travis CI's older infrastructure.
-sudo: false
+dist: bionic
 
 env:
   global:
@@ -20,10 +19,9 @@ env:
     # Supply more than one RACKET_VERSION (as in the example below) to
     # create a Travis-CI build matrix to test against multiple Racket
     # versions.
-    - RACKET_VERSION=6.0
-    - RACKET_VERSION=6.5
-    - RACKET_VERSION=6.11
+    - RACKET_VERSION=7.4
     - RACKET_VERSION=HEAD
+    - RACKET_VERSION=HEADCS
 
 matrix:
   allow_failures:
