@@ -40,12 +40,16 @@
 (define (python-worker-kill it)
   (custodian-shutdown-all (python-worker-cust it)))
 
+(define python-revision-system-revision
+  0)
+
 (define (build-worker-revision mod-str rev)
   (if (let loop ([rev rev])
         (if (list? rev)
             (andmap loop rev)
             rev))
-      (list spacy-revision
+      (list python-revision-system-revision
+            spacy-revision
             model-revisions
             mod-str
             rev)

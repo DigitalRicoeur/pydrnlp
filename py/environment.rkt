@@ -13,12 +13,12 @@
 ;;   conda deactivate
 
 (define spacy-revision
-  "2.1.8")
+  "2.1.8") ;; "2.2.0" ;; not on conda yet
 
 (define model-revisions
-  #hasheq([en_core_web_md . "2.1.0"]
-          [fr_core_news_sm . "2.1.0"]
-          [de_core_news_sm . "2.1.0"]))
+  #hasheq([en_core_web_md . "2.1.0"] ;; "2.2.0"
+          [fr_core_news_sm . "2.1.0"] ;; "2.2.0"
+          [de_core_news_sm . "2.1.0"])) ;; "2.2.0"
 
 (define (string-append/intern . args)
   (datum-intern-literal (apply string-append args)))
