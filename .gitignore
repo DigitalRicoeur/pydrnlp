@@ -10,6 +10,7 @@ scribblings/*.js
 py/condaenv
 py/environment.yml
 *.sqlite
+*.sqlite-journal
 
 # The remainder is from
 # https://github.com/github/gitignore/blob/master/Python.gitignore

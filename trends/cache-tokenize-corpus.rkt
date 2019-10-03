@@ -133,7 +133,8 @@
                                    #:quiet? quiet?)
   (define-values [found corpus:lemma/count corpus:lemma/string]
     (if trends-engine-revision
-        (get-cached-documents #:db local-db
+        (get-cached-documents docs
+                              #:db local-db
                               #:revision-fasl cacheTokenizerRevisionFasl
                               #:checksum-table-fasl corpusChecksumTableFasl
                               #:checksum-table checksum-table)

@@ -4,7 +4,7 @@
 (define collection "pydrnlp")
 (define pkg-desc
   "Racket interface to Python NLP library for Digital Ricoeur")
-(define version "0.0.3")
+(define version "0.0.90")
 (define pkg-authors '(philip))
 
 (define install-collection
@@ -20,7 +20,7 @@
 (define deps
   '(["base" #:version "7.4"]
     ["ricoeur-kernel" #:version "0.0.1"]
-    ["ricoeur-tei-utils" #:version "0.5.9"]
+    ["ricoeur-tei-utils" #:version "0.5.90"]
     ["adjutor" #:version "0.2.5"]
     "python-tokenizer"
     "math-lib"

@@ -7,6 +7,8 @@
 
 (provide trends-corpus<%>
          (contract-out
+          [write-trends-data
+           (->* [] [output-port?] any)]
           [make-trends-corpus-mixin
            (-> (-> string? string?)
                (and/c (make-mixin-contract corpus%)
@@ -28,14 +30,23 @@
                (make-mixin-contract trends-corpus<%>))]
           ))
 
+  
 (define-corpus-mixin+interface [abstract-trends-corpus-mixin
                                 trends-corpus<%>]
   [] []
   (interface ()
     [trends-term->href (->m string? string?)]
-    [trends-data-ready-evt (->m (evt/c (recursive-contract
-                                        (is-a?/c trends-corpus<%>))))]
-    [write-trends-data (->*m [output-port?] any)])
+    [trends-data-ready-evt (recursive-contract
+                            (->m (evt/c (is-a?/c trends-corpus<%>))))]
+    [#:contract (->*m [output-port?] any)
+     (define/public-final (write-trends-data [out (current-output-port)])
+       (write-bytes (force pr:data-bytes) out)
+       (void))
+     #:with-current/infer
+     #:else [(write-json `#hasheq([years-with-titles . ()]
+                                  [terms . (,the-terms-header ())])
+                         out)
+             (void)]])
   (abstract trends-term->href)
   (define pr:data-bytes
     ;; or use a temporary file?
@@ -45,19 +56,17 @@
      (jsexpr->bytes
       (hasheq 'years-with-titles all-years-with-titles
               'terms
-              (list '("href" "text" "%" "sparse-data")
+              (list the-terms-header
                     (for/list ([row (in-list listof-text+%+sparse-data)])
                       (cons (trends-term->href (car row))
                             row)))))))
-  (define evt
-    (wrap-evt pr:data-bytes
-              (λ (x) this)))
   (super-new)
   (define/public-final (trends-data-ready-evt)
-    evt)
-  (define/public-final (write-trends-data [out (current-output-port)])
-    (write-bytes (force pr:data-bytes) out)
-    (void)))
+    (wrap-evt pr:data-bytes
+              (λ (x) this))))
+
+(define the-terms-header
+  '("href" "text" "%" "sparse-data"))
 
 (define (make-trends-corpus-mixin* do-trends-term->href)
   (mixin [trends-corpus<%>] []

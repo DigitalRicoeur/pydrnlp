@@ -10,11 +10,12 @@
 
 (define (make-trends-data all-docs)
   (define t-c
-    (get/build-tokenized-corpus
-     (for/instance-set ([doc (in-instance-set all-docs)]
-                        #:when (eq? 'en (instance-language doc))
-                        #:when (eq? 'book (instance-book/article doc)))
-       doc)))
+    (tokenized-corpus-enforce-threshold
+     (get/build-tokenized-corpus
+      (for/instance-set ([doc (in-instance-set all-docs)]
+                         #:when (eq? 'en (instance-language doc))
+                         #:when (eq? 'book (instance-book/article doc)))
+        doc))))
   (define corpus:lemma/string (tokenized-corpus-lemma/string t-c))
   (define corpus:lemma/count (tokenized-corpus-lemma/count t-c))
   (define grand-total (total:lemma/count corpus:lemma/count))
@@ -65,9 +66,23 @@
                (sort (map instance-title grp) title<?)
                l/c)))
 
+(define (tokenized-corpus->threshold t-c)
+  ;; will keep top 1000
+  190)
 
-
-
+(define (tokenized-corpus-enforce-threshold t-c)
+  (define threshold (tokenized-corpus->threshold t-c))
+  (define (l/c-enforce-threshold l/c)
+    (lemma/count (for/hasheq ([{k v} (in-immutable-hash (lemma/count-hsh l/c))]
+                              #:unless (< v threshold))
+                   (values k v))))
+  (match-define (tokenized-corpus docs l/c l/s) t-c)
+  (tokenized-corpus (for/instance-set ([d (in-instance-set docs)])
+                      (match-define (tokenized-document info l/c) d)
+                      (tokenized-document info (l/c-enforce-threshold l/c)))
+                    (l/c-enforce-threshold l/c)
+                    l/s))
+   
 
 
 

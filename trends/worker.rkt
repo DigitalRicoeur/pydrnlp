@@ -21,8 +21,9 @@
            jsexpr?]
           [trends-engine-tokenize
            (-> trends-engine?
-               (listof (hash/c (or/c 'en 'fr) (listof string?)
-                               #:immutable #t))
+               (hash/c (or/c 'en 'fr)
+                       (listof string?)
+                       #:immutable #t)
                (stream/c (listof token?)))]
           [struct token
             ([lemma symbol?]
@@ -64,7 +65,7 @@
          (map (match-lambda
                 [(list (app string->symbol lemma)
                        (app datum-intern-literal text))
-                 (cons lemma text)])
+                 (token lemma text)])
               (stream-first js-results)))
        (stream-cons this
                     (loop (add1 count)
