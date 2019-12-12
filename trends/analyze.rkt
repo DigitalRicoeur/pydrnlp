@@ -6,7 +6,18 @@
          "types.rkt"
          "cache-tokenize-corpus.rkt")
 
-(provide make-trends-data)
+(provide (contract-out
+          [make-trends-data
+           (-> (instance-set/c tei-document?)
+               (values (listof (list/c exact-positive-integer?
+                                       (listof string?)))
+                       (listof (list/c string?
+                                       (and/c (between/c 0 100)
+                                              inexact?)
+                                       (listof (list/c exact-positive-integer?
+                                                       (and/c (between/c 0 100)
+                                                              inexact?)))))))]
+          ))
 
 (define (make-trends-data all-docs)
   (define t-c
@@ -72,16 +83,22 @@
 
 (define (tokenized-corpus-enforce-threshold t-c)
   (define threshold (tokenized-corpus->threshold t-c))
-  (define (l/c-enforce-threshold l/c)
-    (lemma/count (for/hasheq ([{k v} (in-immutable-hash (lemma/count-hsh l/c))]
+  (match-define (tokenized-corpus docs old-l/c l/s) t-c)
+  (define new-l/c
+    (lemma/count (for/hasheq ([{k v} (in-immutable-hash (lemma/count-hsh old-l/c))]
                               #:unless (< v threshold))
                    (values k v))))
-  (match-define (tokenized-corpus docs l/c l/s) t-c)
-  (tokenized-corpus (for/instance-set ([d (in-instance-set docs)])
-                      (match-define (tokenized-document info l/c) d)
-                      (tokenized-document info (l/c-enforce-threshold l/c)))
-                    (l/c-enforce-threshold l/c)
-                    l/s))
+  (tokenized-corpus
+   (for/instance-set ([d (in-instance-set docs)])
+     (match-define (tokenized-document info old-doc-l/c) d)
+     (tokenized-document
+      info
+      (lemma/count
+       (for/hasheq ([{k v} (in-immutable-hash (lemma/count-hsh old-doc-l/c))]
+                    #:when (lemma/count-ref new-l/c k))
+         (values k v)))))
+   new-l/c
+   l/s))
    
 
 
