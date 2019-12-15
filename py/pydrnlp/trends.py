@@ -8,7 +8,7 @@ import regex
 
 # Python revision function
 def revision():
-    this_module_revision = 9
+    this_module_revision = 10
     return [this_module_revision,
             pydrnlp.language.revision()]
 
@@ -30,7 +30,7 @@ def analyze_all(jsexpr):
     for lang_str, segs in jsexpr.items():
         nlp = pydrnlp.language.get(lang_str)
         for doc in nlp.pipe(segs, as_tuples = False):
-            yield [(t.lemma_, t.norm_) # formerly t.text
+            yield [(t.lemma_, t.text) # t.norm_ seemed too lower-case
                    for t in doc if should_use_token(t, lang = nlp)]
 
 
