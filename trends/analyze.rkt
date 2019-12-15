@@ -4,22 +4,45 @@
          gregor
          ricoeur/stdlib/json
          "types.rkt"
+         (submod "types/lemma-table.rkt" hacks)
          "cache-tokenize-corpus.rkt")
 
-(provide (contract-out
+(provide trends-data-internal?
+         (contract-out
           [make-trends-data
+           (make-trends-data/c (instance-set/c tei-document?))]
+          ;; low-level
+          [make-trends-data-internal
            (-> (instance-set/c tei-document?)
-               (values (listof (list/c exact-positive-integer?
-                                       (listof string?)))
-                       (listof (list/c string?
-                                       (and/c (between/c 0 100)
-                                              inexact?)
-                                       (listof (list/c exact-positive-integer?
-                                                       (and/c (between/c 0 100)
-                                                              inexact?)))))))]
+               trends-data-internal?)]
+          [trends-data-internal->data
+           (make-trends-data/c trends-data-internal?)]
+          [trends-data-internal->count-table
+           (-> trends-data-internal?
+               (and/c
+                (cons/c
+                 (cons/c "Term" (cons/c "Overall" (listof exact-positive-integer?)))
+                 (cons/c (cons/c "TOTAL" (listof natural-number/c))
+                         (listof (cons/c string? (listof natural-number/c)))))
+                (λ (lsts)
+                  (define len0 (length (car lsts)))
+                  (andmap (λ (lst) (= len0 (length lst))) lsts))))]
           ))
 
-(define (make-trends-data all-docs)
+(define (make-trends-data/c arg/c)
+  (-> arg/c
+      (values (listof (list/c exact-positive-integer?
+                              (listof string?)))
+              (listof (list/c string?
+                              (and/c (between/c 0 100)
+                                     inexact?)
+                              (listof (list/c exact-positive-integer?
+                                              (and/c (between/c 0 100)
+                                                     inexact?))))))))
+
+(struct trends-data-internal (tokenized-corpus l-year-data))
+
+(define (make-trends-data-internal all-docs)
   (define t-c
     (tokenized-corpus-enforce-threshold
      (get/build-tokenized-corpus
@@ -27,11 +50,20 @@
                          #:when (eq? 'en (instance-language doc))
                          #:when (eq? 'book (instance-book/article doc)))
         doc))))
-  (define corpus:lemma/string (tokenized-corpus-lemma/string t-c))
-  (define corpus:lemma/count (tokenized-corpus-lemma/count t-c))
-  (define grand-total (total:lemma/count corpus:lemma/count))
-  (define l-year-data
-    (sort (tokenized-corpus->l-year-data t-c) #:key year-data-year <))
+  (trends-data-internal t-c
+                        (sort (tokenized-corpus->l-year-data t-c) #:key year-data-year <)))
+
+
+(define (make-trends-data all-docs)
+  (trends-data-internal->data
+   (make-trends-data-internal all-docs)))
+
+(define (trends-data-internal->data ir)
+  (match-define
+    (trends-data-internal (and t-c (tokenized-corpus corpus-tbl _))
+                          l-year-data)
+    ir)
+  (define grand-total (lemma/count-total corpus-tbl))
   (define all-years-with-titles
     (map (match-lambda 
            [(year-data year _ titles _)
@@ -39,10 +71,11 @@
          l-year-data))
   (define listof-text+%+sparse-data
     (for/list ([pr (in-list 
-                    (sort (hash->list (lemma/count-hsh corpus:lemma/count))
+                    (sort (hash->list (lemma/count-hsh
+                                       (lemma-table->lemma/count corpus-tbl)))
                           #:key cdr >))])
       (match-define (cons lemma total) pr)
-      (define text (lemma/string-ref corpus:lemma/string lemma))
+      (define text (lemma/string-ref corpus-tbl lemma))
       (define % (compute-percent total grand-total))
       (define sparse-data
         (for*/list ([y-d (in-list l-year-data)]
@@ -73,7 +106,7 @@
       (apply union:lemma/count
              (map tokenized-document-lemma/count grp)))
     (year-data (instance-orig-publication-year (car grp))
-               (total:lemma/count l/c)
+               (lemma/count-total l/c)
                (sort (map instance-title grp) title<?)
                l/c)))
 
@@ -83,25 +116,46 @@
 
 (define (tokenized-corpus-enforce-threshold t-c)
   (define threshold (tokenized-corpus->threshold t-c))
-  (match-define (tokenized-corpus docs old-l/c l/s) t-c)
-  (define new-l/c
-    (lemma/count (for/hasheq ([{k v} (in-immutable-hash (lemma/count-hsh old-l/c))]
-                              #:unless (< v threshold))
-                   (values k v))))
+  (match-define (tokenized-corpus old-corpus-tbl docs) t-c)
+  (define new-corpus-tbl
+    (lemma-table-filter old-corpus-tbl
+                        (λ (k n str) (not (< n threshold)))))
+  (define HACK-new-corpus-count-hsh
+    (lemma/count-hsh (lemma-table->lemma/count new-corpus-tbl)))
   (tokenized-corpus
+   new-corpus-tbl
    (for/instance-set ([d (in-instance-set docs)])
      (match-define (tokenized-document info old-doc-l/c) d)
      (tokenized-document
       info
-      (lemma/count
-       (for/hasheq ([{k v} (in-immutable-hash (lemma/count-hsh old-doc-l/c))]
-                    #:when (lemma/count-ref new-l/c k))
-         (values k v)))))
-   new-l/c
-   l/s))
-   
+      (HACK-make-lemma/count
+       ;; iterate over what is likely the smaller hash
+       (for*/hasheq ([k (in-immutable-hash-keys HACK-new-corpus-count-hsh)]
+                     [v (in-value (lemma/count-ref old-doc-l/c k))]
+                     #:when v)
+         (values k v)))))))
 
 
 
+(define (trends-data-internal->count-table ir)
+  (match-define
+    (trends-data-internal (and t-c (tokenized-corpus tbl _))
+                          l-year-data)
+    ir)
+  (list*
+   (list* "Term" "Overall" (map year-data-year l-year-data))
+   (list* "TOTAL" (lemma/count-total tbl) (map year-data-total l-year-data))
+   (sort
+    (for/list ([{k corpus-count}
+                (in-immutable-hash ;; ugly
+                 (lemma/count-hsh (lemma-table->lemma/count tbl)))])
+      (list* (lemma/string-ref tbl k)
+             corpus-count
+             (map (match-lambda
+                    [(year-data _ _ _ l/c)
+                     (or (lemma/count-ref l/c k) 0)])
+                  l-year-data)))
+    #:key car
+    string-ci<?)))
 
   

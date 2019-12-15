@@ -21,7 +21,7 @@
            jsexpr?]
           [trends-engine-tokenize
            (-> trends-engine?
-               (hash/c (or/c 'en 'fr)
+               (hash/c (or/c 'en 'fr 'de)
                        (listof string?)
                        #:immutable #t)
                (stream/c (listof token?)))]

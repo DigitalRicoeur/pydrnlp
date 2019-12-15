@@ -38,10 +38,10 @@
            [channels . ("defaults"
                         "conda-forge")] ;; for spacy
            [dependencies
-            . ("python>=3.7" ;; held back by regex
+            . ("python>=3.7" ;; held back by regex "python>=3.8,<3.9.0a0"
                ,(string-append/intern "spacy=" spacy-revision)
                "srsly>=0.2.0"
-               "regex>=2019.12.9" ;; FIXME support Python 3.8
+               "regex>=2019.11.1" ;; FIXME support Python 3.8 2019.12.9
                "pip>=19.3.1"
                #hasheq([pip . ,(hash-map model-revisions
                                          model->package-source
