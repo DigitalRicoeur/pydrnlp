@@ -244,6 +244,15 @@
    (for/hasheq : Lemma/Count-Hash ([{k pr} (in-immutable-hash (lemma-table-hsh tbl))])
      (values k (car pr)))))
 
+
+(define-type Counts-Blob-Payload
+  (Pairof (Immutable-Vectorof Symbol)
+          (Immutable-Vectorof Exact-Positive-Integer)))
+(define-type Strings-Blob-Payload
+  (Pairof Bytes
+          (Immutable-Vectorof String)))
+          
+
 (: lemma-table->blobs (-> lemma-table (values Bytes Bytes)))
 (define (lemma-table->blobs tbl)
   (define hsh (lemma-table-hsh tbl))
@@ -261,12 +270,14 @@
     (vector-set! strings i (cdr pr)))
   (define a
     (bytes->immutable-bytes
-     (s-exp->fasl (cons (vector->immutable-vector keys)
-                        (vector->immutable-vector counts)))))
+     (s-exp->fasl (ann (cons (vector->immutable-vector keys)
+                             (vector->immutable-vector counts))
+                       Counts-Blob-Payload))))
   (values a
           (bytes->immutable-bytes
-           (s-exp->fasl (cons (sha256-bytes a)
-                              (vector->immutable-vector strings))))))
+           (s-exp->fasl (ann (cons (sha256-bytes a)
+                                   (vector->immutable-vector strings))
+                             Strings-Blob-Payload)))))
 
 
 (: blob->lemma/count (-> Bytes lemma/count))
@@ -284,26 +295,19 @@
   (define who 'blobs->lemma-table)
   (define-syntax-rule (bad! arg ...)
     (bad*! who count-bs str-bs 'second arg ...))
-  (define checksum
+  (define checksum-again
     (sha256-bytes count-bs))
   (define-values [symbols counts]
     (unpack-counts-blob count-bs #:who who #:blob2 str-bs))
-  (define strings
-    (match (fasl->s-exp count-bs)
-      [(cons checksum* strings)
-       (unless (equal? checksum checksum*)
-         (bad! #:msg "checksums do not match" checksum checksum*))
-       strings]
-      [v
-       (bad! "pair?" v)]))
-  (check-vector-immutable! strings bad! "strings")
+  (define strings-payload (cast (fasl->s-exp str-bs) Strings-Blob-Payload))
+  (unless (bytes=? checksum-again (car strings-payload))
+    (bad! #:msg "checksums do not match" (car strings-payload) checksum-again))
+  (define strings (cdr strings-payload))
   (check-vectors-same-length! symbols strings "strings" bad!)
   (lemma-table
    (for/hasheq : Lemma-Table-Hash ([k (in-vector symbols)]
                                    [i (in-vector counts)]
                                    [str (in-vector strings)])
-     (unless (string? str)
-       (bad! "String" str))
      (values k (cons i str)))))
 
 
@@ -314,24 +318,10 @@
 (define (unpack-counts-blob bs #:who who #:blob2 blob2)
   (define-syntax-rule (bad! arg ...)
     (bad*! who bs blob2 'first arg ...))
-  (define pr (fasl->s-exp bs))
-  (unless (pair? pr)
-    (bad! "pair?" pr))
-  (match-define (cons symbols counts) pr)
-  (check-vector-immutable! symbols bad! "Symbol")
-  (check-vector-immutable! counts bad! "Exact-Positive-Integer")
+  (define pr (cast (fasl->s-exp bs) Counts-Blob-Payload))
+  (define symbols (car pr))
+  (define counts (cdr pr))
   (check-vectors-same-length! symbols counts "counts" bad!)
-  ;; TR couldn't prove the type of the vector by
-  ;; checking its elements with `for` didn't prove the container type
-  (define-syntax-rule (check-contents vec desc Element pred)
-    (unless ((make-predicate (Immutable-Vectorof Element)) vec)
-      (bad! desc (let/ec report : Any
-                   (for ([e (in-vector vec)]
-                         #:unless (pred e))
-                       (report e))
-                   (error who "internal error from unpack-counts-blob")))))
-  (check-contents symbols "Symbol" Symbol symbol?)
-  (check-contents counts "Exact-Positive-Integer" Exact-Positive-Integer exact-positive-integer?)
   (values symbols counts))
 
 
@@ -359,13 +349,10 @@
             (list "blob..." extra-bs
                   "first blob..." bs)])))
 
-(define (ivof-msg [str : String]) : String
-  (string-append "(Immutable-Vectorof " str ")"))
-(define-syntax-rule (check-vector-immutable! v bad! of)
-  (unless (and (vector? v) (immutable? v))
-    (bad! (ivof-msg of) v)))
-(define-type IV (Immutable-Vectorof Any))
-(define (veclen-help [a : IV] [b : IV] [str : String] [bad! : (-> Index Index String Nothing)])
+
+
+(define (veclen-help [a : (Immutable-Vectorof Any)] [b : (Immutable-Vectorof Any)]
+                     [str : String] [bad! : (-> Index Index String Nothing)])
   (unless (= (vector-length a) (vector-length b))
     (define msg (string-append "vector of " str " is the wrong length"))
     (bad! (vector-length a) (vector-length b) msg)))
