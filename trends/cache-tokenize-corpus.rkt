@@ -89,7 +89,7 @@
      (define plain-info
        (instance-set->plain docs))
      (define table
-       (blobs->lemma-table blobs->lemma-table))
+       (blobs->lemma-table counts-blob strings-blob))
      ;; Mark the access time for the corpus and documents
      ;; so we don't evict them from the cache:
      (define atime (current-seconds)) 
