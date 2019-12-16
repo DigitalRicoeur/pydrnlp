@@ -307,25 +307,31 @@
      (values k (cons i str)))))
 
 
+
 (: unpack-counts-blob (-> Bytes #:who Symbol #:blob2 (U #f Bytes)
                           (values (Immutable-Vectorof Symbol)
                                   (Immutable-Vectorof Exact-Positive-Integer))))
 (define (unpack-counts-blob bs #:who who #:blob2 blob2)
   (define-syntax-rule (bad! arg ...)
     (bad*! who bs blob2 'first arg ...))
-  (define pr (s-exp->fasl bs))
+  (define pr (fasl->s-exp bs))
   (unless (pair? pr)
     (bad! "pair?" pr))
   (match-define (cons symbols counts) pr)
   (check-vector-immutable! symbols bad! "Symbol")
   (check-vector-immutable! counts bad! "Exact-Positive-Integer")
   (check-vectors-same-length! symbols counts "counts" bad!)
-  (for ([k (in-vector symbols)]
-        [i (in-vector counts)])
-    (unless (symbol? k)
-      (bad! "Symbol" k))
-    (unless (exact-positive-integer? i)
-      (bad! "Exact-Positive-Integer" i)))
+  ;; TR couldn't prove the type of the vector by
+  ;; checking its elements with `for` didn't prove the container type
+  (define-syntax-rule (check-contents vec desc Element pred)
+    (unless ((make-predicate (Immutable-Vectorof Element)) vec)
+      (bad! desc (let/ec report : Any
+                   (for ([e (in-vector vec)]
+                         #:unless (pred e))
+                       (report e))
+                   (error who "internal error from unpack-counts-blob")))))
+  (check-contents symbols "Symbol" Symbol symbol?)
+  (check-contents counts "Exact-Positive-Integer" Exact-Positive-Integer exact-positive-integer?)
   (values symbols counts))
 
 
