@@ -19,7 +19,7 @@
 
 (define deps
   '(["base" #:version "7.4"]
-    ["ricoeur-kernel" #:version "0.0.1"]
+    ["ricoeur-kernel" #:version "0.0.2"]
     ["ricoeur-tei-utils" #:version "0.5.91"]
     ["adjutor" #:version "0.3"]
     "python-tokenizer"
