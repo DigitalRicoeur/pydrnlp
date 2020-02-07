@@ -6,6 +6,7 @@
          "../py/environment.rkt"
          ricoeur/stdlib/json
          adjutor
+         (only-in adjutor/unstable TODO/void find-executable-path*)
          (for-syntax racket/base))
 
 (provide py-dir

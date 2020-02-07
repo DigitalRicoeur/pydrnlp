@@ -6,6 +6,7 @@
          sql
          racket/fasl
          ricoeur/tei
+         (only-in adjutor/unstable TODO/void)
          "tokenize-one-doc.rkt"
          "worker.rkt"
          "types.rkt"
